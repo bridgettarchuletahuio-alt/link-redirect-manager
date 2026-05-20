@@ -1,0 +1,14 @@
+{
+  "name": "link-redirect-manager",
+  "version": "1.0.0",
+  "description": "IP-locked link redirect manager with geo-blocking",
+  "main": "index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run index.ts",
+    "start": "bun run index.ts"
+  },
+  "keywords": ["link", "redirect", "ip-lock", "geo-blocking"],
+  "author": "",
+  "license": "MIT"
+}
