@@ -1,3 +1,29 @@
+import { resolve } from "dns/promises";
+import crypto from "crypto";
+
+// Generate a unique DNS TXT verification token
+function generateVerificationToken(): string {
+  return "link-redirect-verify=" + crypto.randomBytes(24).toString("hex");
+}
+
+// Check DNS TXT records for the verification token
+async function verifyDomainOwnership(
+  domainName: string,
+  token: string
+): Promise<boolean> {
+  try {
+    const records = await resolve(domainName, "TXT");
+    // records is string[][], each entry is an array of string chunks for one TXT record
+    for (const record of records) {
+      const full = record.join("");
+      if (full === token) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // 获取客户端 IP
 function getClientIP(req: Request): string {
   return (
@@ -34,8 +60,17 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS domains (
         id SERIAL PRIMARY KEY,
         domain_name VARCHAR(255) UNIQUE NOT NULL,
+        verification_token VARCHAR(255),
+        is_verified BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `;
+
+    // Add new columns to existing domains table if they don't exist yet
+    await sql`
+      ALTER TABLE domains
+        ADD COLUMN IF NOT EXISTS verification_token VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE
     `;
 
     await sql`
@@ -91,22 +126,93 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // API: 创建域名
-  if (path === "/api/domains" && method === "POST") {
+  // API: Register domain (step 1 — issues a verification token)
+  if (path === "/api/domains/register" && method === "POST") {
     try {
       const { domain_name } = await req.json();
+      if (!domain_name) {
+        return new Response(JSON.stringify({ error: "domain_name is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const token = generateVerificationToken();
       const sql = Bun.sql;
       const result = await sql`
-        INSERT INTO domains (domain_name) VALUES (${domain_name})
-        RETURNING id, domain_name
+        INSERT INTO domains (domain_name, verification_token, is_verified)
+        VALUES (${domain_name}, ${token}, FALSE)
+        ON CONFLICT (domain_name) DO UPDATE
+          SET verification_token = ${token}, is_verified = FALSE
+        RETURNING id, domain_name, verification_token, is_verified
       `;
-      return new Response(JSON.stringify(result[0]), {
-        status: 201,
+      return new Response(
+        JSON.stringify({
+          ...result[0],
+          instructions: `Add the following DNS TXT record to ${domain_name}, then call POST /api/domains/verify`,
+          txt_record: token,
+        }),
+        {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Failed to register domain" }), {
+        status: 400,
         headers: { "Content-Type": "application/json" },
       });
+    }
+  }
+
+  // API: Verify domain ownership (step 2 — checks DNS TXT record)
+  if (path === "/api/domains/verify" && method === "POST") {
+    try {
+      const { domain_name } = await req.json();
+      if (!domain_name) {
+        return new Response(JSON.stringify({ error: "domain_name is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const sql = Bun.sql;
+      const domainResult = await sql`
+        SELECT id, domain_name, verification_token, is_verified
+        FROM domains WHERE domain_name = ${domain_name}
+      `;
+      if (domainResult.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Domain not found. Register it first via POST /api/domains/register" }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const domain = domainResult[0];
+      if (domain.is_verified) {
+        return new Response(
+          JSON.stringify({ message: "Domain is already verified", domain }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const verified = await verifyDomainOwnership(domain_name, domain.verification_token);
+      if (!verified) {
+        return new Response(
+          JSON.stringify({
+            error: "DNS TXT record not found or does not match",
+            expected_txt_record: domain.verification_token,
+            hint: `Add a TXT record to ${domain_name} with the value above, then retry`,
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      await sql`
+        UPDATE domains SET is_verified = TRUE WHERE id = ${domain.id}
+      `;
+      return new Response(
+        JSON.stringify({ message: "Domain verified successfully", domain_name, id: domain.id }),
+        { headers: { "Content-Type": "application/json" } }
+      );
     } catch (error) {
-      return new Response(JSON.stringify({ error: "Failed to create domain" }), {
-        status: 400,
+      return new Response(JSON.stringify({ error: "Verification failed" }), {
+        status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -128,13 +234,34 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  // API: 添加链接
+  // API: 添加链接 (only allowed for verified domains)
   const addLinkMatch = path.match(/^\/api\/domains\/(\d+)\/links$/);
   if (addLinkMatch && method === "POST") {
     try {
       const domainId = parseInt(addLinkMatch[1]);
-      const { order_num, target_url } = await req.json();
       const sql = Bun.sql;
+
+      // Enforce domain ownership verification before allowing link management
+      const domainCheck = await sql`
+        SELECT is_verified, domain_name FROM domains WHERE id = ${domainId}
+      `;
+      if (domainCheck.length === 0) {
+        return new Response(JSON.stringify({ error: "Domain not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (!domainCheck[0].is_verified) {
+        return new Response(
+          JSON.stringify({
+            error: "Domain ownership not verified",
+            hint: `Verify ${domainCheck[0].domain_name} first via POST /api/domains/verify`,
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const { order_num, target_url } = await req.json();
       const result = await sql`
         INSERT INTO links (domain_id, order_num, target_url)
         VALUES (${domainId}, ${order_num}, ${target_url})
@@ -343,33 +470,55 @@ function getAdminHTML(): string {
         input, textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
         button { background: #0066cc; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px 0; }
         button:hover { background: #0052a3; }
+        .btn-verify { background: #2e7d32; }
+        .btn-verify:hover { background: #1b5e20; }
         .link-item { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #0066cc; }
         .delete-btn { background: #cc0000; padding: 5px 10px; font-size: 12px; }
         .delete-btn:hover { background: #990000; }
         h2 { margin: 20px 0 10px 0; color: #333; }
         .success { color: green; }
         .error { color: red; }
+        .warning { color: #e65100; }
         .info { background: #e3f2fd; padding: 15px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #2196F3; }
+        .warn-box { background: #fff3e0; padding: 15px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ff9800; }
+        .verified-badge { display: inline-block; background: #2e7d32; color: white; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+        .unverified-badge { display: inline-block; background: #e65100; color: white; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+        .txt-record { font-family: monospace; background: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all; border: 1px solid #ddd; margin: 8px 0; }
+        .step { margin-bottom: 12px; }
+        .step-num { display: inline-block; background: #0066cc; color: white; width: 22px; height: 22px; border-radius: 50%; text-align: center; line-height: 22px; font-size: 12px; margin-right: 6px; }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
           <h1>🔗 Link Redirect Manager</h1>
-          <p>Create domains, manage links, and track access with IP locking and geo-blocking</p>
+          <p>Manage verified domains, links, and track access with IP locking and geo-blocking</p>
         </div>
 
         <div class="card">
           <div class="info">
-            <strong>🔒 IP 固定分配说明：</strong> 每个 IP 地址被随机分配到一个固定的子链接。无论访问多少次，该 IP 都只能访问分配给它的那个链接。
+            <strong>🔒 Domain Ownership Verification Required</strong><br>
+            To prevent domain hijacking, you must prove you own a domain before managing links on it.
+            Registration issues a DNS TXT record you add to your domain; verification checks that record via live DNS lookup.
           </div>
         </div>
 
         <div class="card">
-          <h2>Create New Domain</h2>
+          <h2>Step 1 — Register Domain</h2>
+          <p style="margin-bottom:10px; color:#555;">Enter your domain name to receive a unique DNS TXT verification token.</p>
           <input type="text" id="domainName" placeholder="example.com">
-          <button onclick="createDomain()">Create Domain</button>
-          <div id="domainMessage"></div>
+          <button onclick="registerDomain()">Register Domain</button>
+          <div id="registerMessage"></div>
+          <div id="verifyInstructions" style="display:none;">
+            <div class="warn-box">
+              <strong>⚠️ Action Required — Add this DNS TXT record to your domain:</strong>
+              <div class="txt-record" id="txtRecord"></div>
+              <p style="margin-top:8px;">Once the record is live (DNS propagation may take a few minutes), click <strong>Verify Ownership</strong> below.</p>
+            </div>
+            <h2 style="margin-top:16px;">Step 2 — Verify Ownership</h2>
+            <button class="btn-verify" onclick="verifyDomain()">Verify Ownership</button>
+            <div id="verifyMessage"></div>
+          </div>
         </div>
 
         <div class="card">
@@ -379,22 +528,58 @@ function getAdminHTML(): string {
       </div>
 
       <script>
-        async function createDomain() {
-          const name = document.getElementById('domainName').value;
-          if (!name) return alert('Enter domain name');
-          
+        let pendingVerifyDomain = '';
+
+        async function registerDomain() {
+          const name = document.getElementById('domainName').value.trim();
+          if (!name) return alert('Enter a domain name');
+
           try {
-            const res = await fetch('/api/domains', {
+            const res = await fetch('/api/domains/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ domain_name: name })
             });
             const data = await res.json();
-            document.getElementById('domainMessage').innerHTML = '<p class="success">Domain created!</p>';
-            document.getElementById('domainName').value = '';
+            if (!res.ok) {
+              document.getElementById('registerMessage').innerHTML = \`<p class="error">\${data.error || 'Registration failed'}</p>\`;
+              return;
+            }
+            pendingVerifyDomain = name;
+            document.getElementById('registerMessage').innerHTML = \`<p class="success">Domain registered! Now add the TXT record below to your DNS.</p>\`;
+            document.getElementById('txtRecord').textContent = data.txt_record;
+            document.getElementById('verifyInstructions').style.display = 'block';
+            document.getElementById('verifyMessage').innerHTML = '';
             loadDomains();
           } catch (e) {
-            document.getElementById('domainMessage').innerHTML = '<p class="error">Error creating domain</p>';
+            document.getElementById('registerMessage').innerHTML = '<p class="error">Error registering domain</p>';
+          }
+        }
+
+        async function verifyDomain() {
+          const name = pendingVerifyDomain || document.getElementById('domainName').value.trim();
+          if (!name) return alert('Register a domain first');
+
+          document.getElementById('verifyMessage').innerHTML = '<p>Checking DNS records…</p>';
+          try {
+            const res = await fetch('/api/domains/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain_name: name })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              document.getElementById('verifyMessage').innerHTML =
+                \`<p class="error">\${data.error}</p><p class="warning" style="margin-top:6px;">\${data.hint || ''}</p>\`;
+              return;
+            }
+            document.getElementById('verifyMessage').innerHTML = \`<p class="success">✅ \${data.message}</p>\`;
+            document.getElementById('verifyInstructions').style.display = 'none';
+            document.getElementById('domainName').value = '';
+            pendingVerifyDomain = '';
+            loadDomains();
+          } catch (e) {
+            document.getElementById('verifyMessage').innerHTML = '<p class="error">Error during verification</p>';
           }
         }
 
@@ -402,16 +587,30 @@ function getAdminHTML(): string {
           try {
             const res = await fetch('/api/domains');
             const domains = await res.json();
+            if (!Array.isArray(domains) || domains.length === 0) {
+              document.getElementById('domainsList').innerHTML = '<p style="color:#888;">No domains registered yet.</p>';
+              return;
+            }
             const html = domains.map(d => \`
               <div class="card">
-                <h3>\${d.domain_name}</h3>
-                <button onclick="toggleDomain(\${d.id})">Manage Links</button>
-                <button onclick="viewAssignments(\${d.id})">View IP Assignments</button>
+                <h3>
+                  \${d.domain_name}
+                  \${d.is_verified
+                    ? '<span class="verified-badge">✓ Verified</span>'
+                    : '<span class="unverified-badge">⚠ Unverified</span>'}
+                </h3>
+                \${d.is_verified
+                  ? \`<button onclick="toggleDomain(\${d.id})">Manage Links</button>
+                     <button onclick="viewAssignments(\${d.id})">View IP Assignments</button>\`
+                  : \`<div class="warn-box" style="margin-top:10px;">
+                       Domain not yet verified. Complete Step 1 &amp; 2 above to unlock link management.
+                     </div>\`}
                 <div id="domain-\${d.id}" style="display:none; margin-top: 20px;">
                   <h4>Add Link</h4>
                   <input type="number" id="order-\${d.id}" placeholder="Order (1, 2, 3...)">
                   <input type="url" id="url-\${d.id}" placeholder="Target URL">
                   <button onclick="addLink(\${d.id})">Add Link</button>
+                  <div id="link-msg-\${d.id}"></div>
                   <h4>Links</h4>
                   <div id="links-\${d.id}"></div>
                 </div>
@@ -443,13 +642,20 @@ function getAdminHTML(): string {
           const order = document.getElementById(\`order-\${domainId}\`).value;
           const url = document.getElementById(\`url-\${domainId}\`).value;
           if (!order || !url) return alert('Fill all fields');
-          
+
           try {
-            await fetch(\`/api/domains/\${domainId}/links\`, {
+            const res = await fetch(\`/api/domains/\${domainId}/links\`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ order_num: parseInt(order), target_url: url })
             });
+            const data = await res.json();
+            if (!res.ok) {
+              document.getElementById(\`link-msg-\${domainId}\`).innerHTML =
+                \`<p class="error">\${data.error || 'Failed to add link'}</p>\`;
+              return;
+            }
+            document.getElementById(\`link-msg-\${domainId}\`).innerHTML = '';
             document.getElementById(\`order-\${domainId}\`).value = '';
             document.getElementById(\`url-\${domainId}\`).value = '';
             loadLinks(domainId);
@@ -480,9 +686,9 @@ function getAdminHTML(): string {
             const assignments = await res.json();
             const html = assignments.map(a => \`
               <div class="link-item">
-                <strong>IP:</strong> \${a.ip_address} | 
-                <strong>Country:</strong> \${a.country_code} | 
-                <strong>Link #\${a.order_num}:</strong> \${a.target_url} | 
+                <strong>IP:</strong> \${a.ip_address} |
+                <strong>Country:</strong> \${a.country_code} |
+                <strong>Link #\${a.order_num}:</strong> \${a.target_url} |
                 <strong>Assigned:</strong> \${new Date(a.assigned_at).toLocaleString()}
               </div>
             \`).join('');
