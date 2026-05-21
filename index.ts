@@ -15,7 +15,7 @@ type LinkRow = {
   created_at: string;
 };
 
-const PORT = Number(Bun.env.PORT || 3000);
+const PORT = Number(Bun.env.PORT || 8000);
 const HAS_DATABASE_URL = Boolean(Bun.env.DATABASE_URL);
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
