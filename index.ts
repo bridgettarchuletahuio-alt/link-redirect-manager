@@ -1949,7 +1949,7 @@ async function handleRedirect(
     return jsonResponse({
       url: assignedLink.target_url,
       order: assignedLink.order_num,
-      message: "This IP is locked to this link",
+      message: "这个 IP 已固定到该链接",
     });
   }
 
@@ -2032,7 +2032,7 @@ async function handleRedirect(
   return jsonResponse({
     url: resolvedAssignedLink.target_url,
     order: resolvedAssignedLink.order_num,
-    message: "This IP is locked to this link",
+    message: "这个 IP 已固定到该链接",
   });
 }
 
