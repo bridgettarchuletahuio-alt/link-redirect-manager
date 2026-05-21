@@ -14,6 +14,7 @@ type LinkRow = {
   domain_name: string;
   order_num: number;
   target_url: string;
+  click_count?: number;
   created_at: string;
 };
 
@@ -1354,6 +1355,7 @@ function getAdminHTML(): string {
         '    <button class="btn-danger" data-delete-link="' + link.id + '">删除</button>',
         '  </div>',
         '  <div class="mono">' + escapeHtml(link.target_url) + '</div>',
+        '  <div class="small">点击量：' + Number(link.click_count || 0) + '</div>',
         '  <div class="small">创建时间：' + formatDate(link.created_at) + '</div>',
         '</div>'
       ].join('')).join('');
@@ -1913,9 +1915,20 @@ async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
 
   if (domainId) {
     const links = await sql`
-      SELECT l.*, d.domain_name
+      SELECT
+        l.*,
+        d.domain_name,
+        COALESCE(clicks.click_count, 0)::int AS click_count
       FROM links l
       JOIN domains d ON d.id = l.domain_id
+      LEFT JOIN (
+        SELECT link_id, COUNT(*)::int AS click_count
+        FROM access_logs
+        WHERE link_id IS NOT NULL
+          AND event_type IN ('assignment_created', 'assignment_reused')
+          AND status_code >= 200 AND status_code < 400
+        GROUP BY link_id
+      ) clicks ON clicks.link_id = l.id
       WHERE l.domain_id = ${domainId}
       ORDER BY l.order_num ASC, l.created_at ASC
     `;
@@ -1923,9 +1936,20 @@ async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
   }
 
   const links = await sql`
-    SELECT l.*, d.domain_name
+    SELECT
+      l.*,
+      d.domain_name,
+      COALESCE(clicks.click_count, 0)::int AS click_count
     FROM links l
     JOIN domains d ON d.id = l.domain_id
+    LEFT JOIN (
+      SELECT link_id, COUNT(*)::int AS click_count
+      FROM access_logs
+      WHERE link_id IS NOT NULL
+        AND event_type IN ('assignment_created', 'assignment_reused')
+        AND status_code >= 200 AND status_code < 400
+      GROUP BY link_id
+    ) clicks ON clicks.link_id = l.id
     ORDER BY d.domain_name ASC, l.order_num ASC, l.created_at ASC
   `;
   return jsonResponse(links);
@@ -2005,17 +2029,22 @@ async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise
     return jsonResponse({ error: "Domain not found for allowed country config" }, 404);
   }
 
+  const existingRows = await sql`
+    SELECT id FROM blocked_countries
+    WHERE domain_id = ${domainId} AND country_code = ${countryCode}
+    LIMIT 1
+  `;
+
+  if (existingRows[0]) {
+    return jsonResponse({ error: "Country is already allowed for this domain" }, 409);
+  }
+
   try {
     const result = await sql`
       INSERT INTO blocked_countries (domain_id, country_code)
       VALUES (${domainId}, ${countryCode})
-      ON CONFLICT (domain_id, country_code) DO NOTHING
       RETURNING *
     `;
-
-    if (!result[0]) {
-      return jsonResponse({ error: "Country is already allowed for this domain" }, 409);
-    }
 
     return jsonResponse(result[0], 201);
   } catch (error) {
