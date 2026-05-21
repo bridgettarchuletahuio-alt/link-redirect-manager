@@ -15,6 +15,44 @@ type LinkRow = {
   created_at: string;
 };
 
+const COUNTRY_OPTIONS = [
+  { code: "US", name: "美国" },
+  { code: "JP", name: "日本" },
+  { code: "TW", name: "台湾" },
+  { code: "HK", name: "香港" },
+  { code: "SG", name: "新加坡" },
+  { code: "TH", name: "泰国" },
+  { code: "VN", name: "越南" },
+  { code: "MY", name: "马来西亚" },
+  { code: "CN", name: "中国大陆" },
+  { code: "KR", name: "韩国" },
+  { code: "GB", name: "英国" },
+  { code: "CA", name: "加拿大" },
+  { code: "AU", name: "澳大利亚" },
+  { code: "DE", name: "德国" },
+  { code: "FR", name: "法国" },
+  { code: "IN", name: "印度" },
+  { code: "BR", name: "巴西" },
+  { code: "RU", name: "俄罗斯" },
+  { code: "PH", name: "菲律宾" },
+  { code: "ID", name: "印度尼西亚" },
+  { code: "MX", name: "墨西哥" },
+  { code: "IT", name: "意大利" },
+  { code: "ES", name: "西班牙" },
+  { code: "NL", name: "荷兰" },
+  { code: "SE", name: "瑞典" },
+  { code: "NO", name: "挪威" },
+  { code: "DK", name: "丹麦" },
+  { code: "FI", name: "芬兰" },
+  { code: "PL", name: "波兰" },
+  { code: "TR", name: "土耳其" },
+  { code: "SA", name: "沙特阿拉伯" },
+  { code: "AE", name: "阿联酋" },
+  { code: "ZA", name: "南非" },
+] as const;
+
+const COUNTRY_NAME_BY_CODE = Object.fromEntries(COUNTRY_OPTIONS.map((item) => [item.code, item.name]));
+
 export {};
 
 const PORT = Number(Bun.env.PORT || 8000);
@@ -89,6 +127,15 @@ function decodeUnicodeEscapes(input: string): string {
   return input.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) =>
     String.fromCharCode(parseInt(hex, 16))
   );
+}
+
+function getCountryDisplayName(code: string): string {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) {
+    return "未知";
+  }
+
+  return COUNTRY_NAME_BY_CODE[normalizedCode as keyof typeof COUNTRY_NAME_BY_CODE] || normalizedCode;
 }
 
 async function initDB() {
@@ -901,10 +948,10 @@ function getAdminHTML(): string {
             <div class="stack">
               <h2>地区限制</h2>
               <div class="field">
-                <label for="country-code">国家代码</label>
-                <input id="country-code" maxlength="16" placeholder="CN / HK / US">
+                <label for="country-code">国家/地区</label>
+                <select id="country-code"></select>
               </div>
-              <button class="btn-warning" id="add-country-btn">添加封禁国家</button>
+              <button class="btn-warning" id="add-country-btn">添加国家</button>
               <div id="country-message" class="message"></div>
               <div id="countries-list" class="chip-list"></div>
             </div>
@@ -957,6 +1004,7 @@ function getAdminHTML(): string {
 
   <script>
     const CLOUDFLARE_TOKEN_CONFIGURED = ${JSON.stringify(CLOUDFLARE_TOKEN_CONFIGURED)};
+    const COUNTRY_OPTIONS = ${JSON.stringify(COUNTRY_OPTIONS)};
 
     const state = {
       domains: [],
@@ -973,6 +1021,21 @@ function getAdminHTML(): string {
       const el = document.getElementById(id);
       el.textContent = text || '';
       el.className = 'message' + (type ? ' ' + type : '');
+    }
+
+    function getCountryDisplayName(code) {
+      const normalizedCode = String(code || '').trim().toUpperCase();
+      const match = COUNTRY_OPTIONS.find((item) => item.code === normalizedCode);
+      return match ? match.name : normalizedCode || '未知';
+    }
+
+    function renderCountryPicker() {
+      const select = document.getElementById('country-code');
+      select.innerHTML = [
+        '<option value="">选择国家/地区</option>',
+        ...COUNTRY_OPTIONS.map((item) => '<option value="' + item.code + '">' + item.name + '</option>')
+      ].join('');
+      select.value = 'US';
     }
 
     async function ensureCloudflareTokenReady() {
@@ -1127,7 +1190,7 @@ function getAdminHTML(): string {
 
       wrap.innerHTML = countries.map((country) => [
         '<span class="chip">',
-        '  ' + escapeHtml(country.country_code),
+        '  ' + escapeHtml(getCountryDisplayName(country.country_code)),
         '  <button data-delete-country="' + escapeHtml(country.country_code) + '">×</button>',
         '</span>'
       ].join('')).join('');
@@ -1164,7 +1227,7 @@ function getAdminHTML(): string {
         assignments.map((item) => [
           '<tr>',
           '  <td class="mono">' + escapeHtml(item.ip_address) + '</td>',
-          '  <td>' + escapeHtml(item.country_code || 'unknown') + '</td>',
+          '  <td>' + escapeHtml(getCountryDisplayName(item.country_code || 'unknown')) + '</td>',
           '  <td>#' + item.order_num + '</td>',
           '  <td class="mono">' + escapeHtml(item.target_url) + '</td>',
           '  <td>' + formatDate(item.assigned_at) + '</td>',
@@ -1190,7 +1253,7 @@ function getAdminHTML(): string {
           '<tr>',
           '  <td>' + formatDate(log.created_at) + '</td>',
           '  <td class="mono">' + escapeHtml(log.ip_address) + '</td>',
-          '  <td>' + escapeHtml(log.country_code || 'unknown') + '</td>',
+          '  <td>' + escapeHtml(getCountryDisplayName(log.country_code || 'unknown')) + '</td>',
           '  <td>' + escapeHtml(log.event_type) + '</td>',
           '  <td>' + log.status_code + '</td>',
           '  <td>' + escapeHtml(log.detail || '-') + '</td>',
@@ -1289,7 +1352,7 @@ function getAdminHTML(): string {
       document.getElementById('kpi-rate').textContent = rate + '%';
 
       drawTrend(logs);
-      renderMetricList('metric-country', countBy(logs, (row) => row.country_code || 'unknown'));
+      renderMetricList('metric-country', countBy(logs, (row) => getCountryDisplayName(row.country_code || 'unknown')));
       renderMetricList('metric-event', countBy(logs, (row) => row.event_type || 'unknown'));
       renderMetricList('metric-status', countBy(logs, (row) => row.status_code || 'unknown'));
     }
@@ -1429,7 +1492,7 @@ function getAdminHTML(): string {
       const input = document.getElementById('country-code');
       const countryCode = input.value.trim();
       if (!countryCode) {
-        setMessage('country-message', '请输入国家代码', 'error');
+        setMessage('country-message', '请选择国家/地区', 'error');
         return;
       }
 
@@ -1486,6 +1549,8 @@ function getAdminHTML(): string {
     document.getElementById('reload-links-btn').addEventListener('click', () => loadDomainData().catch((error) => setMessage('link-message', error.message, 'error')));
     document.getElementById('reload-assignments-btn').addEventListener('click', () => loadDomainData().catch((error) => setMessage('link-message', error.message, 'error')));
     document.getElementById('reload-logs-btn').addEventListener('click', () => loadDomainData().catch((error) => setMessage('link-message', error.message, 'error')));
+
+    renderCountryPicker();
 
     loadOverview().catch((error) => {
       setMessage('domain-message', error.message, 'error');
