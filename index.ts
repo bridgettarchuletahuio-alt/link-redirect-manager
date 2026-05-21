@@ -2051,12 +2051,20 @@ async function tryDomainHostRedirect(path: string, req: Request, sql: SqlClient)
   }
 
   try {
-    const domain = await resolveDomain(sql, host);
+    let domain = await resolveDomain(sql, host);
+
+    // Accept both apex and www hostnames for the same configured entry domain.
+    if (!domain && host.startsWith("www.")) {
+      domain = await resolveDomain(sql, host.slice(4));
+    } else if (!domain) {
+      domain = await resolveDomain(sql, `www.${host}`);
+    }
+
     if (!domain) {
       return null;
     }
 
-    return handleRedirect(host, req, sql, "http");
+    return handleRedirect(domain.domain_name, req, sql, "http");
   } catch (error) {
     console.error("Host redirect lookup failed:", error);
     return null;
