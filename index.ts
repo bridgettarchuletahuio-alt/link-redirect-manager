@@ -82,6 +82,7 @@ const RAILWAY_APP_DOMAIN = Bun.env.RAILWAY_APP_DOMAIN || "";
 const RAILWAY_CONFIGURED = Boolean(
   RAILWAY_TOKEN && RAILWAY_PROJECT_ID && RAILWAY_ENVIRONMENT_ID && RAILWAY_SERVICE_ID
 );
+const ADMIN_PASSWORD = Bun.env.ADMIN_PASSWORD || "xiaozhangnb";
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -93,6 +94,44 @@ function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+function isManagementPath(path: string): boolean {
+  return path === "/" || path === "/admin" || path.startsWith("/api/");
+}
+
+function isPublicPath(path: string): boolean {
+  return path === "/healthz" || /^\/api\/redirect\//.test(path);
+}
+
+function isAdminAuthenticated(req: Request): boolean {
+  const authorization = req.headers.get("authorization") || "";
+  if (!authorization.toLowerCase().startsWith("basic ")) {
+    return false;
+  }
+
+  const encoded = authorization.slice(6).trim();
+  if (!encoded) {
+    return false;
+  }
+
+  try {
+    const decoded = atob(encoded);
+    const separatorIndex = decoded.indexOf(":");
+    const password = separatorIndex >= 0 ? decoded.slice(separatorIndex + 1) : "";
+    return password === ADMIN_PASSWORD;
+  } catch {
+    return false;
+  }
+}
+
+function unauthorizedResponse(): Response {
+  return new Response("Unauthorized", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": 'Basic realm="Link Redirect Manager", charset="UTF-8"',
+    },
   });
 }
 
@@ -139,7 +178,20 @@ function normalizeDomainInput(domainInput: string): string {
   return normalizeHostToDomain(trimmed.replace(/^https?:\/\//, ""));
 }
 
-async function getCountryFromIP(ip: string): Promise<string> {
+function normalizeCountryCodeFromHeader(value: string): string {
+  const code = String(value || "").trim().toUpperCase();
+  if (!code || code === "XX" || code === "T1") {
+    return "unknown";
+  }
+  return code;
+}
+
+async function getCountryFromIP(req: Request, ip: string): Promise<string> {
+  const cfCountry = normalizeCountryCodeFromHeader(req.headers.get("cf-ipcountry") || "");
+  if (cfCountry !== "unknown") {
+    return cfCountry;
+  }
+
   if (!ip || ip === "unknown" || ip === "127.0.0.1" || ip === "::1") {
     return "LOCAL";
   }
@@ -175,6 +227,14 @@ function getCountryDisplayName(code: string): string {
   const normalizedCode = String(code || "").trim().toUpperCase();
   if (!normalizedCode) {
     return "未知";
+  }
+
+  if (normalizedCode === "UNKNOWN") {
+    return "未知";
+  }
+
+  if (normalizedCode === "LOCAL") {
+    return "本地";
   }
 
   return COUNTRY_NAME_BY_CODE[normalizedCode as keyof typeof COUNTRY_NAME_BY_CODE] || normalizedCode;
@@ -1243,6 +1303,12 @@ function getAdminHTML(): string {
 
     function getCountryDisplayName(code) {
       const normalizedCode = String(code || '').trim().toUpperCase();
+      if (normalizedCode === 'UNKNOWN') {
+        return '未知';
+      }
+      if (normalizedCode === 'LOCAL') {
+        return '本地';
+      }
       const match = COUNTRY_OPTIONS.find((item) => item.code === normalizedCode);
       return match ? match.name : normalizedCode || '未知';
     }
@@ -2286,7 +2352,7 @@ async function handleRedirect(
   const domainName = decodeURIComponent(domainNameRaw).trim().toLowerCase();
   const domain = await resolveDomain(sql, domainName);
   const clientIP = getClientIP(req);
-  const countryCode = await getCountryFromIP(clientIP);
+  const countryCode = await getCountryFromIP(req, clientIP);
 
   if (!domain) {
     return jsonResponse({ error: "Domain not found" }, 404);
@@ -2490,6 +2556,10 @@ async function handleRequest(req: Request): Promise<Response> {
     const hostRedirect = await tryDomainHostRedirect(path, req, sql);
     if (hostRedirect) {
       return hostRedirect;
+    }
+
+    if (isManagementPath(path) && !isPublicPath(path) && !isAdminAuthenticated(req)) {
+      return unauthorizedResponse();
     }
 
     if (path === "/admin" && method === "GET") {

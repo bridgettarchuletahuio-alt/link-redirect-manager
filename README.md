@@ -16,6 +16,7 @@
 - PostgreSQL
 - DATABASE_URL 环境变量
 - Cloudflare API Token、CLOUDFLARE_DNS_TARGET（创建入口域名时必须配置，用于自动同步 Cloudflare DNS）
+- ADMIN_PASSWORD（可选，管理后台与管理接口密码，默认 `xiaozhangnb`）
 
 Cloudflare Token 相关环境变量：
 
