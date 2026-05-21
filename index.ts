@@ -15,6 +15,8 @@ type LinkRow = {
   created_at: string;
 };
 
+export {};
+
 const PORT = Number(Bun.env.PORT || 8000);
 const HAS_DATABASE_URL = Boolean(Bun.env.DATABASE_URL);
 const CLOUDFLARE_API_TOKEN = Bun.env.CLOUDFLARE_API_TOKEN || "";
@@ -1686,7 +1688,12 @@ async function handleListBlockedCountries(url: URL, sql: SqlClient): Promise<Res
     SELECT country_code, created_at
     FROM blocked_countries
     WHERE domain_id = ${domainId}
-    ORDER BY country_code ASC
+      ORDER BY
+        CASE
+          WHEN country_code IN ('US', 'JP', 'TW', 'HK', 'SG', 'TH', 'VN', 'MY') THEN 0
+          ELSE 1
+        END,
+        country_code ASC
   `;
 
   return jsonResponse(rows);
@@ -1841,21 +1848,29 @@ async function handleRedirect(
       return jsonResponse({ error: "No links available" }, 404);
     }
 
-    assignedLink = allLinks[Math.floor(Math.random() * allLinks.length)];
+    const selectedLink = allLinks[Math.floor(Math.random() * allLinks.length)]!;
+    assignedLink = selectedLink;
     eventType = "assignment_created";
-    detail = `Assigned IP to order ${assignedLink.order_num}`;
+    detail = `Assigned IP to order ${selectedLink.order_num}`;
 
     await sql`
       INSERT INTO ip_assignments (domain_id, link_id, ip_address, country_code)
-      VALUES (${domain.id}, ${assignedLink.id}, ${clientIP}, ${countryCode})
+      VALUES (${domain.id}, ${selectedLink.id}, ${clientIP}, ${countryCode})
       ON CONFLICT (domain_id, ip_address)
       DO UPDATE SET link_id = EXCLUDED.link_id, country_code = EXCLUDED.country_code
     `;
   }
 
+  if (!assignedLink) {
+    console.error("Assignment resolution failed for domain:", domain.domain_name);
+    return jsonResponse({ error: "Failed to resolve redirect target" }, 500);
+  }
+
+  const resolvedAssignedLink = assignedLink;
+
   await writeAccessLog(sql, {
     domainId: domain.id,
-    linkId: assignedLink.id,
+    linkId: resolvedAssignedLink.id,
     ipAddress: clientIP,
     countryCode,
     eventType,
@@ -1864,12 +1879,12 @@ async function handleRedirect(
   });
 
   if (responseMode === "http") {
-    return Response.redirect(assignedLink.target_url, 302);
+    return Response.redirect(resolvedAssignedLink.target_url, 302);
   }
 
   return jsonResponse({
-    url: assignedLink.target_url,
-    order: assignedLink.order_num,
+    url: resolvedAssignedLink.target_url,
+    order: resolvedAssignedLink.order_num,
     message: "This IP is locked to this link",
   });
 }
