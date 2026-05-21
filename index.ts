@@ -5,6 +5,7 @@ type SqlClient = typeof Bun.sql;
 type DomainRow = {
   id: number;
   domain_name: string;
+  owner_username: string;
   created_at: string;
 };
 
@@ -74,6 +75,8 @@ const CLOUDFLARE_DNS_PROXIED = (Bun.env.CLOUDFLARE_DNS_PROXIED || "true").toLowe
 const CLOUDFLARE_TOKEN_CONFIGURED = Boolean(CLOUDFLARE_API_TOKEN);
 const CLOUDFLARE_AUTO_DNS_ENABLED = Boolean(CLOUDFLARE_API_TOKEN && CLOUDFLARE_DNS_TARGET);
 const CLOUDFLARE_ZONE_CACHE = new Map<string, string>();
+const COUNTRY_BY_IP_CACHE = new Map<string, { code: string; expiresAt: number }>();
+const COUNTRY_CACHE_TTL_MS = 10 * 60 * 1000;
 const RAILWAY_TOKEN = Bun.env.RAILWAY_TOKEN || "";
 const RAILWAY_PROJECT_ID = Bun.env.RAILWAY_PROJECT_ID || "";
 const RAILWAY_ENVIRONMENT_ID = Bun.env.RAILWAY_ENVIRONMENT_ID || "";
@@ -83,6 +86,11 @@ const RAILWAY_CONFIGURED = Boolean(
   RAILWAY_TOKEN && RAILWAY_PROJECT_ID && RAILWAY_ENVIRONMENT_ID && RAILWAY_SERVICE_ID
 );
 const ADMIN_PASSWORD = Bun.env.ADMIN_PASSWORD || "xiaozhangnb";
+const QILONGZHU_PASSWORD = Bun.env.QILONGZHU_PASSWORD || "qilongzhu888";
+const BUILTIN_USERS = new Map<string, string>([
+  ["admin", ADMIN_PASSWORD],
+  ["qilongzhu", QILONGZHU_PASSWORD],
+]);
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -105,24 +113,35 @@ function isPublicPath(path: string): boolean {
   return path === "/healthz" || /^\/api\/redirect\//.test(path);
 }
 
-function isAdminAuthenticated(req: Request): boolean {
+function getAuthenticatedUsername(req: Request): string | null {
   const authorization = req.headers.get("authorization") || "";
   if (!authorization.toLowerCase().startsWith("basic ")) {
-    return false;
+    return null;
   }
 
   const encoded = authorization.slice(6).trim();
   if (!encoded) {
-    return false;
+    return null;
   }
 
   try {
     const decoded = atob(encoded);
     const separatorIndex = decoded.indexOf(":");
+    const username = separatorIndex >= 0 ? decoded.slice(0, separatorIndex).trim() : "";
     const password = separatorIndex >= 0 ? decoded.slice(separatorIndex + 1) : "";
-    return password === ADMIN_PASSWORD;
+
+    if (!username || !password) {
+      return null;
+    }
+
+    const expectedPassword = BUILTIN_USERS.get(username);
+    if (!expectedPassword || expectedPassword !== password) {
+      return null;
+    }
+
+    return username;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -196,14 +215,29 @@ async function getCountryFromIP(req: Request, ip: string): Promise<string> {
     return "LOCAL";
   }
 
+  const now = Date.now();
+  const cached = COUNTRY_BY_IP_CACHE.get(ip);
+  if (cached && cached.expiresAt > now) {
+    return cached.code;
+  }
+
   try {
-    const res = await fetch(`https://ipapi.co/${ip}/json/`);
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 350);
+    const res = await fetch(`https://ipapi.co/${ip}/json/`, { signal: abortController.signal });
+    clearTimeout(timeoutId);
+
     if (!res.ok) {
       return "unknown";
     }
 
     const data = await res.json();
-    return String(data.country_code || "unknown").toUpperCase();
+    const resolved = String(data.country_code || "unknown").toUpperCase();
+    COUNTRY_BY_IP_CACHE.set(ip, {
+      code: resolved,
+      expiresAt: now + COUNTRY_CACHE_TTL_MS,
+    });
+    return resolved;
   } catch {
     return "unknown";
   }
@@ -254,8 +288,35 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS domains (
         id SERIAL PRIMARY KEY,
         domain_name VARCHAR(255) NOT NULL UNIQUE,
+        owner_username VARCHAR(128) NOT NULL DEFAULT 'admin',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `;
+
+    await sql`
+      ALTER TABLE domains
+      ADD COLUMN IF NOT EXISTS owner_username VARCHAR(128)
+    `;
+
+    await sql`
+      UPDATE domains
+      SET owner_username = 'admin'
+      WHERE owner_username IS NULL OR owner_username = ''
+    `;
+
+    await sql`
+      ALTER TABLE domains
+      ALTER COLUMN owner_username SET DEFAULT 'admin'
+    `;
+
+    await sql`
+      ALTER TABLE domains
+      ALTER COLUMN owner_username SET NOT NULL
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_domains_owner_username
+      ON domains(owner_username)
     `;
 
     await sql`
@@ -326,10 +387,29 @@ async function resolveDomain(sql: SqlClient, domainName: string): Promise<Domain
     return null;
   }
 
-  const result = await sql`SELECT * FROM domains ORDER BY created_at DESC`;
-  return (
-    (result as DomainRow[]).find((row) => normalizeDomainInput(row.domain_name) === normalizedTarget) ?? null
-  );
+  const result = await sql<DomainRow[]>`
+    SELECT id, domain_name, owner_username, created_at
+    FROM domains
+    WHERE domain_name = ${normalizedTarget}
+    LIMIT 1
+  `;
+
+  return result[0] ?? null;
+}
+
+async function resolveOwnedDomain(
+  sql: SqlClient,
+  domainId: number,
+  ownerUsername: string
+): Promise<DomainRow | null> {
+  const result = await sql<DomainRow[]>`
+    SELECT id, domain_name, owner_username, created_at
+    FROM domains
+    WHERE id = ${domainId} AND owner_username = ${ownerUsername}
+    LIMIT 1
+  `;
+
+  return result[0] ?? null;
 }
 
 async function writeAccessLog(
@@ -658,7 +738,7 @@ async function syncCloudflareCnameRecord(domainName: string): Promise<{ synced: 
   return createWithRetry();
 }
 
-function getAdminHTML(): string {
+function getAdminHTML(currentUsername: string): string {
   return `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -1281,6 +1361,7 @@ function getAdminHTML(): string {
   <script>
     const CLOUDFLARE_TOKEN_CONFIGURED = ${JSON.stringify(CLOUDFLARE_TOKEN_CONFIGURED)};
     const COUNTRY_OPTIONS = ${JSON.stringify(COUNTRY_OPTIONS)};
+    const CURRENT_USER = ${JSON.stringify(currentUsername)};
 
     const state = {
       domains: [],
@@ -1950,6 +2031,11 @@ function getAdminHTML(): string {
 
     renderCountryPicker();
 
+    const descEl = document.querySelector('.desc');
+    if (descEl && CURRENT_USER) {
+      descEl.textContent = '当前账号：' + CURRENT_USER + ' · 深色看板 · 链接分发 · 允许国家 · 访问分析';
+    }
+
     document.getElementById('link-range').addEventListener('change', (event) => {
       const target = event.target;
       const value = target && target.value ? String(target.value) : 'all';
@@ -1975,11 +2061,12 @@ function parseJsonBody<T>(req: Request): Promise<T> {
   return req.json() as Promise<T>;
 }
 
-async function handleOverview(sql: SqlClient): Promise<Response> {
+async function handleOverview(sql: SqlClient, ownerUsername: string): Promise<Response> {
   const domains = await sql`
     SELECT
       d.id,
       d.domain_name,
+      d.owner_username,
       d.created_at,
       COUNT(DISTINCT l.id) AS link_count,
       COUNT(DISTINCT ia.id) AS assignment_count,
@@ -1988,14 +2075,30 @@ async function handleOverview(sql: SqlClient): Promise<Response> {
     LEFT JOIN links l ON l.domain_id = d.id
     LEFT JOIN ip_assignments ia ON ia.domain_id = d.id
     LEFT JOIN blocked_countries bc ON bc.domain_id = d.id
+    WHERE d.owner_username = ${ownerUsername}
     GROUP BY d.id
     ORDER BY d.created_at DESC
   `;
 
   const [linkCountResult, assignmentCountResult, logCountResult] = await Promise.all([
-    sql`SELECT COUNT(*)::int AS count FROM links`,
-    sql`SELECT COUNT(*)::int AS count FROM ip_assignments`,
-    sql`SELECT COUNT(*)::int AS count FROM access_logs`,
+    sql`
+      SELECT COUNT(*)::int AS count
+      FROM links l
+      JOIN domains d ON d.id = l.domain_id
+      WHERE d.owner_username = ${ownerUsername}
+    `,
+    sql`
+      SELECT COUNT(*)::int AS count
+      FROM ip_assignments ia
+      JOIN domains d ON d.id = ia.domain_id
+      WHERE d.owner_username = ${ownerUsername}
+    `,
+    sql`
+      SELECT COUNT(*)::int AS count
+      FROM access_logs al
+      JOIN domains d ON d.id = al.domain_id
+      WHERE d.owner_username = ${ownerUsername}
+    `,
   ]);
 
   return jsonResponse({
@@ -2009,7 +2112,7 @@ async function handleOverview(sql: SqlClient): Promise<Response> {
   });
 }
 
-async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Response> {
+async function handleCreateDomain(req: Request, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const body = await parseJsonBody<{ domain_name?: string }>(req);
   const domainName = normalizeDomainInput(body.domain_name || "");
 
@@ -2028,8 +2131,8 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
   }
 
   const result = await sql`
-    INSERT INTO domains (domain_name)
-    VALUES (${domainName})
+    INSERT INTO domains (domain_name, owner_username)
+    VALUES (${domainName}, ${ownerUsername})
     ON CONFLICT (domain_name) DO NOTHING
     RETURNING *
   `;
@@ -2045,6 +2148,10 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
     domainRow = existingRows[0] as DomainRow | undefined;
     if (!domainRow) {
       return jsonResponse({ error: "Domain already exists" }, 409);
+    }
+
+    if (domainRow.owner_username !== ownerUsername) {
+      return jsonResponse({ error: "Domain already exists under another account" }, 403);
     }
   }
 
@@ -2082,9 +2189,10 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
   }, created ? 201 : 200);
 }
 
-async function handleDeleteDomain(domainId: number, sql: SqlClient): Promise<Response> {
+async function handleDeleteDomain(domainId: number, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const result = await sql`
-    DELETE FROM domains WHERE id = ${domainId}
+    DELETE FROM domains
+    WHERE id = ${domainId} AND owner_username = ${ownerUsername}
     RETURNING id
   `;
 
@@ -2095,7 +2203,7 @@ async function handleDeleteDomain(domainId: number, sql: SqlClient): Promise<Res
   return jsonResponse({ success: true });
 }
 
-async function handleCreateLink(req: Request, sql: SqlClient): Promise<Response> {
+async function handleCreateLink(req: Request, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const body = await parseJsonBody<{
     domain_id?: number;
     order_num?: number;
@@ -2108,6 +2216,11 @@ async function handleCreateLink(req: Request, sql: SqlClient): Promise<Response>
 
   if (!domainId || !orderNum || !targetUrl) {
     return jsonResponse({ error: "domain_id, order_num and target_url are required" }, 400);
+  }
+
+  const domain = await resolveOwnedDomain(sql, domainId, ownerUsername);
+  if (!domain) {
+    return jsonResponse({ error: "Domain not found" }, 404);
   }
 
   try {
@@ -2125,7 +2238,7 @@ async function handleCreateLink(req: Request, sql: SqlClient): Promise<Response>
   }
 }
 
-async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
+async function handleListLinks(url: URL, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const domainId = Number(url.searchParams.get("domain_id"));
   const range = String(url.searchParams.get("range") || "all").toLowerCase();
   const normalizedRange = ["today", "yesterday", "day_before_yesterday", "7d", "all"].includes(range)
@@ -2156,6 +2269,7 @@ async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
         GROUP BY al.link_id
       ) clicks ON clicks.link_id = l.id
       WHERE l.domain_id = ${domainId}
+        AND d.owner_username = ${ownerUsername}
       ORDER BY l.order_num ASC, l.created_at ASC
     `;
     return jsonResponse(links);
@@ -2183,15 +2297,20 @@ async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
         )
       GROUP BY al.link_id
     ) clicks ON clicks.link_id = l.id
+    WHERE d.owner_username = ${ownerUsername}
     ORDER BY d.domain_name ASC, l.order_num ASC, l.created_at ASC
   `;
   return jsonResponse(links);
 }
 
-async function handleDeleteLink(linkId: number, sql: SqlClient): Promise<Response> {
+async function handleDeleteLink(linkId: number, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const result = await sql`
-    DELETE FROM links WHERE id = ${linkId}
-    RETURNING id
+    DELETE FROM links l
+    USING domains d
+    WHERE l.id = ${linkId}
+      AND l.domain_id = d.id
+      AND d.owner_username = ${ownerUsername}
+    RETURNING l.id
   `;
 
   if (!result[0]) {
@@ -2201,7 +2320,7 @@ async function handleDeleteLink(linkId: number, sql: SqlClient): Promise<Respons
   return jsonResponse({ success: true });
 }
 
-async function handleListAssignments(url: URL, sql: SqlClient): Promise<Response> {
+async function handleListAssignments(url: URL, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const domainId = Number(url.searchParams.get("domain_id"));
 
   const records = domainId
@@ -2211,6 +2330,7 @@ async function handleListAssignments(url: URL, sql: SqlClient): Promise<Response
         JOIN links l ON l.id = ia.link_id
         JOIN domains d ON d.id = ia.domain_id
         WHERE ia.domain_id = ${domainId}
+          AND d.owner_username = ${ownerUsername}
         ORDER BY ia.assigned_at DESC
       `
     : await sql`
@@ -2218,13 +2338,14 @@ async function handleListAssignments(url: URL, sql: SqlClient): Promise<Response
         FROM ip_assignments ia
         JOIN links l ON l.id = ia.link_id
         JOIN domains d ON d.id = ia.domain_id
+        WHERE d.owner_username = ${ownerUsername}
         ORDER BY ia.assigned_at DESC
       `;
 
   return jsonResponse(records);
 }
 
-async function handleListBlockedCountries(url: URL, sql: SqlClient): Promise<Response> {
+async function handleListBlockedCountries(url: URL, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const domainId = Number(url.searchParams.get("domain_id"));
 
   if (!domainId) {
@@ -2235,6 +2356,11 @@ async function handleListBlockedCountries(url: URL, sql: SqlClient): Promise<Res
     SELECT country_code, created_at
     FROM blocked_countries
     WHERE domain_id = ${domainId}
+      AND EXISTS (
+        SELECT 1 FROM domains d
+        WHERE d.id = blocked_countries.domain_id
+          AND d.owner_username = ${ownerUsername}
+      )
       ORDER BY
         CASE
           WHEN country_code IN ('US', 'JP', 'TW', 'HK', 'SG', 'TH', 'VN', 'MY') THEN 0
@@ -2246,7 +2372,7 @@ async function handleListBlockedCountries(url: URL, sql: SqlClient): Promise<Res
   return jsonResponse(rows);
 }
 
-async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise<Response> {
+async function handleCreateBlockedCountry(req: Request, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const body = await parseJsonBody<{ domain_id?: number; country_code?: string }>(req);
   const domainId = Number(body.domain_id);
   const countryCode = normalizeCountryCode(body.country_code || "");
@@ -2255,10 +2381,8 @@ async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise
     return jsonResponse({ error: "domain_id and country_code are required" }, 400);
   }
 
-  const domainRows = await sql`
-    SELECT id FROM domains WHERE id = ${domainId} LIMIT 1
-  `;
-  if (!domainRows[0]) {
+  const domain = await resolveOwnedDomain(sql, domainId, ownerUsername);
+  if (!domain) {
     return jsonResponse({ error: "Domain not found for allowed country config" }, 404);
   }
 
@@ -2297,12 +2421,22 @@ async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise
   }
 }
 
-async function handleDeleteBlockedCountry(req: Request, countryCodeRaw: string, sql: SqlClient): Promise<Response> {
+async function handleDeleteBlockedCountry(
+  req: Request,
+  countryCodeRaw: string,
+  sql: SqlClient,
+  ownerUsername: string
+): Promise<Response> {
   const domainId = Number(req.headers.get("x-domain-id"));
   const countryCode = normalizeCountryCode(decodeURIComponent(countryCodeRaw));
 
   if (!domainId || !countryCode) {
     return jsonResponse({ error: "Domain header and country code are required" }, 400);
+  }
+
+  const domain = await resolveOwnedDomain(sql, domainId, ownerUsername);
+  if (!domain) {
+    return jsonResponse({ error: "Domain not found for allowed country config" }, 404);
   }
 
   const result = await sql`
@@ -2318,7 +2452,7 @@ async function handleDeleteBlockedCountry(req: Request, countryCodeRaw: string, 
   return jsonResponse({ success: true });
 }
 
-async function handleListAccessLogs(url: URL, sql: SqlClient): Promise<Response> {
+async function handleListAccessLogs(url: URL, sql: SqlClient, ownerUsername: string): Promise<Response> {
   const domainId = Number(url.searchParams.get("domain_id"));
 
   const rows = domainId
@@ -2328,6 +2462,7 @@ async function handleListAccessLogs(url: URL, sql: SqlClient): Promise<Response>
         JOIN domains d ON d.id = al.domain_id
         LEFT JOIN links l ON l.id = al.link_id
         WHERE al.domain_id = ${domainId}
+          AND d.owner_username = ${ownerUsername}
         ORDER BY al.created_at DESC
         LIMIT 200
       `
@@ -2336,6 +2471,7 @@ async function handleListAccessLogs(url: URL, sql: SqlClient): Promise<Response>
         FROM access_logs al
         JOIN domains d ON d.id = al.domain_id
         LEFT JOIN links l ON l.id = al.link_id
+        WHERE d.owner_username = ${ownerUsername}
         ORDER BY al.created_at DESC
         LIMIT 200
       `;
@@ -2545,6 +2681,9 @@ async function handleRequest(req: Request): Promise<Response> {
   const sql = Bun.sql;
 
   try {
+    const requiresManagementAuth = isManagementPath(path) && !isPublicPath(path);
+    const authenticatedUser = requiresManagementAuth ? getAuthenticatedUsername(req) : null;
+
     if (path === "/healthz" && method === "GET") {
       return jsonResponse({
         ok: true,
@@ -2558,24 +2697,24 @@ async function handleRequest(req: Request): Promise<Response> {
       return hostRedirect;
     }
 
-    if (isManagementPath(path) && !isPublicPath(path) && !isAdminAuthenticated(req)) {
+    if (requiresManagementAuth && !authenticatedUser) {
       return unauthorizedResponse();
     }
 
     if (path === "/admin" && method === "GET") {
-      return new Response(getAdminHTML(), {
+      return new Response(getAdminHTML(authenticatedUser || ""), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
     if (path === "/" && method === "GET") {
-      return new Response(getAdminHTML(), {
+      return new Response(getAdminHTML(authenticatedUser || ""), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
     if (path === "/api/overview" && method === "GET") {
-      return handleOverview(sql);
+      return handleOverview(sql, authenticatedUser!);
     }
 
     if (path === "/api/version" && method === "GET") {
@@ -2594,46 +2733,46 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/domains" && method === "POST") {
-      return handleCreateDomain(req, sql);
+      return handleCreateDomain(req, sql, authenticatedUser!);
     }
 
     const domainMatch = path.match(/^\/api\/domains\/(\d+)$/);
     if (domainMatch && method === "DELETE") {
-      return handleDeleteDomain(Number(domainMatch[1]), sql);
+      return handleDeleteDomain(Number(domainMatch[1]), sql, authenticatedUser!);
     }
 
     if (path === "/api/links" && method === "POST") {
-      return handleCreateLink(req, sql);
+      return handleCreateLink(req, sql, authenticatedUser!);
     }
 
     if (path === "/api/links" && method === "GET") {
-      return handleListLinks(url, sql);
+      return handleListLinks(url, sql, authenticatedUser!);
     }
 
     const deleteLinkMatch = path.match(/^\/api\/links\/(\d+)$/);
     if (deleteLinkMatch && method === "DELETE") {
-      return handleDeleteLink(Number(deleteLinkMatch[1]), sql);
+      return handleDeleteLink(Number(deleteLinkMatch[1]), sql, authenticatedUser!);
     }
 
     if (path === "/api/assignments" && method === "GET") {
-      return handleListAssignments(url, sql);
+      return handleListAssignments(url, sql, authenticatedUser!);
     }
 
     if (path === "/api/blocked-countries" && method === "GET") {
-      return handleListBlockedCountries(url, sql);
+      return handleListBlockedCountries(url, sql, authenticatedUser!);
     }
 
     if (path === "/api/blocked-countries" && method === "POST") {
-      return handleCreateBlockedCountry(req, sql);
+      return handleCreateBlockedCountry(req, sql, authenticatedUser!);
     }
 
     const deleteCountryMatch = path.match(/^\/api\/blocked-countries\/(.+)$/);
     if (deleteCountryMatch && method === "DELETE") {
-      return handleDeleteBlockedCountry(req, deleteCountryMatch[1], sql);
+      return handleDeleteBlockedCountry(req, deleteCountryMatch[1], sql, authenticatedUser!);
     }
 
     if (path === "/api/access-logs" && method === "GET") {
-      return handleListAccessLogs(url, sql);
+      return handleListAccessLogs(url, sql, authenticatedUser!);
     }
 
     const redirectMatch = path.match(/^\/api\/redirect\/(.+)$/);

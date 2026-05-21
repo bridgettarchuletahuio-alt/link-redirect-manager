@@ -16,7 +16,11 @@
 - PostgreSQL
 - DATABASE_URL 环境变量
 - Cloudflare API Token、CLOUDFLARE_DNS_TARGET（创建入口域名时必须配置，用于自动同步 Cloudflare DNS）
-- ADMIN_PASSWORD（可选，管理后台与管理接口密码，默认 `xiaozhangnb`）
+- 管理后台使用 Basic Auth（用户名 + 密码）
+- 内置账号：
+	- admin（密码来自 `ADMIN_PASSWORD`，默认 `xiaozhangnb`）
+	- qilongzhu（密码来自 `QILONGZHU_PASSWORD`，默认 `qilongzhu888`）
+- 多账号完全数据隔离：每个账号只能看到和操作自己创建的域名、链接、IP 分配、国家限制和访问日志
 
 Cloudflare Token 相关环境变量：
 
@@ -25,6 +29,7 @@ Cloudflare Token 相关环境变量：
 - CLOUDFLARE_ZONE_ID（可选，手动固定到单个 zone 的覆盖值；多域名场景建议留空，让系统按域名自动查找 zone）
 - CLOUDFLARE_DNS_TARGET（可选，自动 CNAME 指向目标，如 `your-service.up.railway.app`）
 - CLOUDFLARE_DNS_PROXIED（可选，默认 `true`）
+- QILONGZHU_PASSWORD（可选，第二个内置账号 `qilongzhu` 的密码，默认 `qilongzhu888`）
 
 Railway 自定义域名自动绑定相关环境变量（推荐配置）：
 
