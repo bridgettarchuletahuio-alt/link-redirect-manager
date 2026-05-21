@@ -925,14 +925,14 @@ function getAdminHTML(): string {
       <aside class="stack">
         <div class="panel stack">
           <div class="toolbar">
-            <h2>新建入口域名</h2>
+            <h2>新建子链接入口域名</h2>
           </div>
           <p>用于子链接跳转的统一入口域名。用户访问该域名时直接进入分配逻辑，不展示前端首页。创建前会校验 Cloudflare API Token。</p>
           <div class="field">
-            <label for="domain-name">入口域名</label>
+            <label for="domain-name">子链接入口域名</label>
             <input id="domain-name" placeholder="go.example.com">
           </div>
-          <button class="btn-primary" id="create-domain-btn">创建入口域名</button>
+          <button class="btn-primary" id="create-domain-btn">创建子链接入口</button>
           <div id="domain-message" class="message"></div>
         </div>
 
@@ -947,20 +947,20 @@ function getAdminHTML(): string {
 
       <section class="main-stack">
         <div class="hero">
-          <h2 id="selected-domain-title">未选择入口域名</h2>
-          <p class="hint" id="selected-domain-hint">选择左侧入口域名后配置分发策略和访问限制。</p>
+          <h2 id="selected-domain-title">未选择子链接入口</h2>
+          <p class="hint" id="selected-domain-hint">选择左侧子链接入口后配置分发策略和访问限制。</p>
           <div class="hero-actions">
-            <button class="btn-soft" id="copy-endpoint-btn">复制重定向入口</button>
+            <button class="btn-soft" id="copy-endpoint-btn">复制跳转入口</button>
             <button class="btn-danger" id="delete-domain-btn">删除入口</button>
           </div>
         </div>
 
         <div class="tabs" id="tabs">
-          <button class="tab-btn active" data-tab="tab-links">链接池</button>
+          <button class="tab-btn active" data-tab="tab-links">子链接池</button>
           <button class="tab-btn" data-tab="tab-config">分发配置</button>
           <button class="tab-btn" data-tab="tab-analytics">访问分析</button>
           <button class="tab-btn" data-tab="tab-logs">访问日志</button>
-          <button class="tab-btn" data-tab="tab-assignments">IP 绑定</button>
+          <button class="tab-btn" data-tab="tab-assignments">IP 固定分配</button>
         </div>
 
         <section id="tab-links" class="tab-panel active panel">
@@ -1179,19 +1179,19 @@ function getAdminHTML(): string {
       const title = document.getElementById('selected-domain-title');
       const hint = document.getElementById('selected-domain-hint');
       if (!state.selectedDomainId) {
-        title.textContent = '未选择入口域名';
-        hint.textContent = '选择左侧入口域名后配置分发策略和访问限制。';
+        title.textContent = '未选择子链接入口';
+        hint.textContent = '选择左侧子链接入口后配置分发策略和访问限制。';
         return;
       }
 
       title.textContent = state.selectedDomainName;
-      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该入口域名的跳转入口，最终会直接跳到子链接。';
+      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该子链接入口的跳转入口，最终会直接跳到子链接。';
     }
 
     function renderLinks(links) {
       const wrap = document.getElementById('links-list');
       if (!links.length) {
-        wrap.innerHTML = '<div class="empty">当前入口域名还没有目标链接。</div>';
+        wrap.innerHTML = '<div class="empty">当前子链接入口还没有目标链接。</div>';
         return;
       }
 
@@ -1224,7 +1224,7 @@ function getAdminHTML(): string {
     function renderCountries(countries) {
       const wrap = document.getElementById('countries-list');
       if (!countries.length) {
-        wrap.innerHTML = '<div class="empty">当前入口域名没有允许国家限制，默认全部国家都可访问。</div>';
+        wrap.innerHTML = '<div class="empty">当前子链接入口没有允许国家限制，默认全部国家都可访问。</div>';
         return;
       }
 
@@ -1255,7 +1255,7 @@ function getAdminHTML(): string {
     function renderAssignments(assignments) {
       const wrap = document.getElementById('assignments-table');
       if (!assignments.length) {
-        wrap.innerHTML = '<div class="empty">当前入口域名暂无 IP 绑定记录。</div>';
+        wrap.innerHTML = '<div class="empty">当前子链接入口暂无 IP 固定分配记录。</div>';
         return;
       }
 
@@ -1280,7 +1280,7 @@ function getAdminHTML(): string {
     function renderLogs(logs) {
       const wrap = document.getElementById('logs-table');
       if (!logs.length) {
-        wrap.innerHTML = '<div class="empty">当前入口域名暂无访问日志。</div>';
+        wrap.innerHTML = '<div class="empty">当前子链接入口暂无访问日志。</div>';
         return;
       }
 
@@ -1469,7 +1469,7 @@ function getAdminHTML(): string {
       const input = document.getElementById('domain-name');
       const domainName = input.value.trim();
       if (!domainName) {
-        setMessage('domain-message', '请输入入口域名', 'error');
+        setMessage('domain-message', '请输入子链接入口域名', 'error');
         return;
       }
 
@@ -1484,7 +1484,7 @@ function getAdminHTML(): string {
         state.selectedDomainId = domain.id;
         state.selectedDomainName = domain.domain_name;
         const dnsSuffix = domain.dns_message ? ('，' + domain.dns_message) : '';
-        setMessage('domain-message', '入口域名已创建' + dnsSuffix, domain.dns_synced ? 'success' : '');
+        setMessage('domain-message', '子链接入口已创建' + dnsSuffix, domain.dns_synced ? 'success' : '');
         await loadOverview();
       } catch (error) {
         setMessage('domain-message', error.message, 'error');
@@ -1551,17 +1551,17 @@ function getAdminHTML(): string {
 
     document.getElementById('delete-domain-btn').addEventListener('click', async () => {
       if (!state.selectedDomainId) {
-        setMessage('domain-message', '没有可删除的入口域名', 'error');
+        setMessage('domain-message', '没有可删除的子链接入口', 'error');
         return;
       }
 
-      if (!confirm('删除入口域名会删除其链接、分配记录、允许国家和访问日志，确定继续吗？')) {
+      if (!confirm('删除子链接入口会删除其链接、分配记录、允许国家和访问日志，确定继续吗？')) {
         return;
       }
 
       try {
         await api('/api/domains/' + state.selectedDomainId, { method: 'DELETE' });
-        setMessage('domain-message', '入口域名已删除', 'success');
+        setMessage('domain-message', '子链接入口已删除', 'success');
         state.selectedDomainId = null;
         state.selectedDomainName = '';
         await loadOverview();
@@ -1572,14 +1572,14 @@ function getAdminHTML(): string {
 
     document.getElementById('copy-endpoint-btn').addEventListener('click', async () => {
       if (!state.selectedDomainName) {
-        setMessage('domain-message', '请先选择入口域名', 'error');
+        setMessage('domain-message', '请先选择子链接入口', 'error');
         return;
       }
 
       const endpoint = location.origin + '/api/redirect/' + state.selectedDomainName;
       try {
         await navigator.clipboard.writeText(endpoint);
-        setMessage('domain-message', '重定向入口已复制', 'success');
+        setMessage('domain-message', '跳转入口已复制', 'success');
       } catch {
         setMessage('domain-message', endpoint, 'success');
       }
