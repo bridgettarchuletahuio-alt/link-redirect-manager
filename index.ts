@@ -17,6 +17,7 @@ type LinkRow = {
 
 const PORT = Number(Bun.env.PORT || 8000);
 const HAS_DATABASE_URL = Boolean(Bun.env.DATABASE_URL);
+const CLOUDFLARE_AUTH_URL = Bun.env.CLOUDFLARE_AUTH_URL || "https://www.cloudflare.com/";
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -632,6 +633,8 @@ function getAdminHTML(): string {
   </main>
 
   <script>
+    const CLOUDFLARE_AUTH_URL = ${JSON.stringify(CLOUDFLARE_AUTH_URL)};
+
     const state = {
       domains: [],
       selectedDomainId: null,
@@ -941,8 +944,9 @@ function getAdminHTML(): string {
         input.value = '';
         state.selectedDomainId = domain.id;
         state.selectedDomainName = domain.domain_name;
-        setMessage('domain-message', '域名已创建', 'success');
+        setMessage('domain-message', '域名已创建，正在跳转 Cloudflare 授权页面...', 'success');
         await loadOverview();
+        window.location.href = CLOUDFLARE_AUTH_URL;
       } catch (error) {
         setMessage('domain-message', error.message, 'error');
       }
