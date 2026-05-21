@@ -16,6 +16,12 @@ type LinkRow = {
 };
 
 const PORT = Number(Bun.env.PORT || 3000);
+const APP_VERSION =
+  Bun.env.RAILWAY_GIT_COMMIT_SHA ||
+  Bun.env.VERCEL_GIT_COMMIT_SHA ||
+  Bun.env.RENDER_GIT_COMMIT ||
+  Bun.env.COMMIT_SHA ||
+  "local-dev";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -1451,6 +1457,13 @@ async function handleRequest(req: Request): Promise<Response> {
       return handleOverview(sql);
     }
 
+    if (path === "/api/version" && method === "GET") {
+      return jsonResponse({
+        version: APP_VERSION,
+        service: "link-redirect-manager",
+      });
+    }
+
     if (path === "/api/domains" && method === "POST") {
       return handleCreateDomain(req, sql);
     }
@@ -1512,3 +1525,4 @@ Bun.serve({
 });
 
 console.log(`Link Redirect Manager running on port ${PORT}`);
+console.log(`App version: ${APP_VERSION}`);
