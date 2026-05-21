@@ -202,7 +202,7 @@ function getAdminHTML(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Link Redirect Manager</title>
+  <title>暴富的小张</title>
   <style>
     :root {
       --bg: radial-gradient(circle at 20% -20%, #172858 0%, #090d18 45%, #05070f 100%);
@@ -657,13 +657,13 @@ function getAdminHTML(): string {
     <section class="top">
       <div class="title-row">
         <div>
-          <h1>Link Redirect Manager</h1>
+          <h1>暴富的小张</h1>
           <p class="desc">深色看板 · 链接分发 · 地区限制 · 访问分析</p>
         </div>
         <button class="btn-soft" id="reload-domains-btn">刷新数据</button>
       </div>
       <div class="top-grid">
-        <div class="stat"><p>域名数量</p><strong id="stat-domains">0</strong></div>
+        <div class="stat"><p>入口域名数量</p><strong id="stat-domains">0</strong></div>
         <div class="stat"><p>链接数量</p><strong id="stat-links">0</strong></div>
         <div class="stat"><p>IP 分配</p><strong id="stat-assignments">0</strong></div>
         <div class="stat"><p>访问日志</p><strong id="stat-logs">0</strong></div>
@@ -674,14 +674,14 @@ function getAdminHTML(): string {
       <aside class="stack">
         <div class="panel stack">
           <div class="toolbar">
-            <h2>新建域名</h2>
+            <h2>新建入口域名</h2>
           </div>
-          <p>创建成功后可自动跳转到 Cloudflare 授权页。</p>
+          <p>用于合并多个链接的统一入口域名，创建后可跳转 Cloudflare 授权。</p>
           <div class="field">
-            <label for="domain-name">域名</label>
-            <input id="domain-name" placeholder="example.com">
+            <label for="domain-name">入口域名</label>
+            <input id="domain-name" placeholder="go.example.com">
           </div>
-          <button class="btn-primary" id="create-domain-btn">创建并去授权</button>
+          <button class="btn-primary" id="create-domain-btn">创建入口并去授权</button>
           <div id="domain-message" class="message"></div>
         </div>
 
@@ -696,11 +696,11 @@ function getAdminHTML(): string {
 
       <section class="main-stack">
         <div class="hero">
-          <h2 id="selected-domain-title">未选择域名</h2>
-          <p class="hint" id="selected-domain-hint">选择左侧域名后配置分发策略和访问限制。</p>
+          <h2 id="selected-domain-title">未选择入口域名</h2>
+          <p class="hint" id="selected-domain-hint">选择左侧入口域名后配置分发策略和访问限制。</p>
           <div class="hero-actions">
             <button class="btn-soft" id="copy-endpoint-btn">复制重定向入口</button>
-            <button class="btn-danger" id="delete-domain-btn">删除域名</button>
+            <button class="btn-danger" id="delete-domain-btn">删除入口</button>
           </div>
         </div>
 
@@ -815,8 +815,8 @@ function getAdminHTML(): string {
       if (state.selectedDomainId) {
         return true;
       }
-      setMessage('link-message', '请先选择域名', 'error');
-      setMessage('country-message', '请先选择域名', 'error');
+      setMessage('link-message', '请先选择入口域名', 'error');
+      setMessage('country-message', '请先选择入口域名', 'error');
       return false;
     }
 
@@ -866,7 +866,7 @@ function getAdminHTML(): string {
     function renderDomains() {
       const wrap = document.getElementById('domains-list');
       if (!state.domains.length) {
-        wrap.innerHTML = '<div class="empty">还没有域名，先创建一个。</div>';
+        wrap.innerHTML = '<div class="empty">还没有入口域名，先创建一个。</div>';
         return;
       }
 
@@ -899,19 +899,19 @@ function getAdminHTML(): string {
       const title = document.getElementById('selected-domain-title');
       const hint = document.getElementById('selected-domain-hint');
       if (!state.selectedDomainId) {
-        title.textContent = '未选择域名';
-        hint.textContent = '选择左侧域名后配置分发策略和访问限制。';
+        title.textContent = '未选择入口域名';
+        hint.textContent = '选择左侧入口域名后配置分发策略和访问限制。';
         return;
       }
 
       title.textContent = state.selectedDomainName;
-      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该域名的重定向入口。';
+      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该入口域名的重定向入口。';
     }
 
     function renderLinks(links) {
       const wrap = document.getElementById('links-list');
       if (!links.length) {
-        wrap.innerHTML = '<div class="empty">当前域名还没有目标链接。</div>';
+        wrap.innerHTML = '<div class="empty">当前入口域名还没有目标链接。</div>';
         return;
       }
 
@@ -944,7 +944,7 @@ function getAdminHTML(): string {
     function renderCountries(countries) {
       const wrap = document.getElementById('countries-list');
       if (!countries.length) {
-        wrap.innerHTML = '<div class="empty">当前域名没有地区限制。</div>';
+        wrap.innerHTML = '<div class="empty">当前入口域名没有地区限制。</div>';
         return;
       }
 
@@ -975,7 +975,7 @@ function getAdminHTML(): string {
     function renderAssignments(assignments) {
       const wrap = document.getElementById('assignments-table');
       if (!assignments.length) {
-        wrap.innerHTML = '<div class="empty">当前域名暂无 IP 绑定记录。</div>';
+        wrap.innerHTML = '<div class="empty">当前入口域名暂无 IP 绑定记录。</div>';
         return;
       }
 
@@ -1000,7 +1000,7 @@ function getAdminHTML(): string {
     function renderLogs(logs) {
       const wrap = document.getElementById('logs-table');
       if (!logs.length) {
-        wrap.innerHTML = '<div class="empty">当前域名暂无访问日志。</div>';
+        wrap.innerHTML = '<div class="empty">当前入口域名暂无访问日志。</div>';
         return;
       }
 
@@ -1189,7 +1189,7 @@ function getAdminHTML(): string {
       const input = document.getElementById('domain-name');
       const domainName = input.value.trim();
       if (!domainName) {
-        setMessage('domain-message', '请输入域名', 'error');
+        setMessage('domain-message', '请输入入口域名', 'error');
         return;
       }
 
@@ -1201,7 +1201,7 @@ function getAdminHTML(): string {
         input.value = '';
         state.selectedDomainId = domain.id;
         state.selectedDomainName = domain.domain_name;
-        setMessage('domain-message', '域名已创建，正在跳转 Cloudflare 授权页面...', 'success');
+        setMessage('domain-message', '入口域名已创建，正在跳转 Cloudflare 授权页面...', 'success');
         await loadOverview();
         window.location.href = CLOUDFLARE_AUTH_URL;
       } catch (error) {
@@ -1269,17 +1269,17 @@ function getAdminHTML(): string {
 
     document.getElementById('delete-domain-btn').addEventListener('click', async () => {
       if (!state.selectedDomainId) {
-        setMessage('domain-message', '没有可删除的域名', 'error');
+        setMessage('domain-message', '没有可删除的入口域名', 'error');
         return;
       }
 
-      if (!confirm('删除域名会删除其链接、分配记录、地区限制和访问日志，确定继续吗？')) {
+      if (!confirm('删除入口域名会删除其链接、分配记录、地区限制和访问日志，确定继续吗？')) {
         return;
       }
 
       try {
         await api('/api/domains/' + state.selectedDomainId, { method: 'DELETE' });
-        setMessage('domain-message', '域名已删除', 'success');
+        setMessage('domain-message', '入口域名已删除', 'success');
         state.selectedDomainId = null;
         state.selectedDomainName = '';
         await loadOverview();
@@ -1290,7 +1290,7 @@ function getAdminHTML(): string {
 
     document.getElementById('copy-endpoint-btn').addEventListener('click', async () => {
       if (!state.selectedDomainName) {
-        setMessage('domain-message', '请先选择域名', 'error');
+        setMessage('domain-message', '请先选择入口域名', 'error');
         return;
       }
 
