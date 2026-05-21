@@ -15,14 +15,12 @@
 - Bun
 - PostgreSQL
 - DATABASE_URL 环境变量
-- Cloudflare OAuth（可选，但管理面板可直接走授权流程）
+- Cloudflare API Token（可选，但创建入口域名前会校验 Token 状态）
 
-Cloudflare OAuth 相关环境变量：
+Cloudflare Token 相关环境变量：
 
-- CLOUDFLARE_OAUTH_CLIENT_ID
-- CLOUDFLARE_OAUTH_CLIENT_SECRET
-- CLOUDFLARE_OAUTH_REDIRECT_URI（可选，不填则自动使用当前站点的 `/api/cloudflare/oauth/callback`）
-- CLOUDFLARE_OAUTH_SCOPES（可选）
+- CLOUDFLARE_API_TOKEN
+- CLOUDFLARE_API_BASE（可选，默认 `https://api.cloudflare.com/client/v4`）
 
 ## 快速开始
 
@@ -53,10 +51,7 @@ bun run dev
 - GET /api/redirect/:domainName：执行 IP 锁定重定向解析
 - GET /api/version：查看当前运行版本（用于确认部署是否最新）
 - GET /healthz：健康检查（不依赖数据库，可用于平台健康探针）
-- GET /api/cloudflare/oauth/status：查看 Cloudflare OAuth 配置和授权状态
-- GET /api/cloudflare/oauth/start：发起 Cloudflare OAuth 授权
-- GET /api/cloudflare/oauth/callback：Cloudflare OAuth 回调
-- DELETE /api/cloudflare/oauth/token：清除本地保存的 OAuth token
+- GET /api/cloudflare/token/status：查看 Cloudflare API Token 配置和校验状态
 
 另外，服务现在支持“按访问 Host 自动重定向”：
 
