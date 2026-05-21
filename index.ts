@@ -905,6 +905,12 @@ function getAdminHTML(): string {
       gap: 10px;
     }
 
+    .line-actions {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+    }
+
     .mono {
       font-family: "IBM Plex Mono", monospace;
       font-size: 12px;
@@ -1118,8 +1124,25 @@ function getAdminHTML(): string {
         <section id="tab-links" class="tab-panel active panel">
           <div class="toolbar">
             <h2>链接卡片</h2>
+            <div class="field" style="min-width: 210px;">
+              <label for="link-range">点击统计范围</label>
+              <select id="link-range">
+                <option value="today">今天</option>
+                <option value="yesterday">昨天</option>
+                <option value="day_before_yesterday">前天</option>
+                <option value="7d">7天</option>
+                <option value="all" selected>总计</option>
+              </select>
+            </div>
           </div>
           <div id="links-list" class="link-grid"></div>
+          <div id="link-day-trend-wrap" class="chart-box" style="display:none;">
+            <div class="toolbar">
+              <h2 id="link-day-trend-title">当日点击曲线</h2>
+              <button class="btn-soft" id="close-link-day-trend">关闭</button>
+            </div>
+            <canvas id="link-day-trend-canvas" width="1200" height="320"></canvas>
+          </div>
           <div id="link-message" class="message"></div>
         </section>
 
@@ -1203,6 +1226,8 @@ function getAdminHTML(): string {
       domains: [],
       selectedDomainId: null,
       selectedDomainName: '',
+      linkRange: 'all',
+      selectedLinkTrendId: null,
       stats: { domains: 0, links: 0, assignments: 0, logs: 0 },
       links: [],
       assignments: [],
@@ -1345,6 +1370,7 @@ function getAdminHTML(): string {
       const wrap = document.getElementById('links-list');
       if (!links.length) {
         wrap.innerHTML = '<div class="empty">当前子链接入口还没有目标链接。</div>';
+        renderLinkDayTrendPanel();
         return;
       }
 
@@ -1352,7 +1378,10 @@ function getAdminHTML(): string {
         '<div class="link-card">',
         '  <div class="line">',
         '    <strong>#' + link.order_num + '</strong>',
-        '    <button class="btn-danger" data-delete-link="' + link.id + '">删除</button>',
+        '    <div class="line-actions">',
+        '      <button class="btn-soft" data-show-link-trend="' + link.id + '">当日曲线</button>',
+        '      <button class="btn-danger" data-delete-link="' + link.id + '">删除</button>',
+        '    </div>',
         '  </div>',
         '  <div class="mono">' + escapeHtml(link.target_url) + '</div>',
         '  <div class="small">点击量：' + Number(link.click_count || 0) + '</div>',
@@ -1373,6 +1402,111 @@ function getAdminHTML(): string {
           }
         });
       });
+
+      wrap.querySelectorAll('[data-show-link-trend]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.selectedLinkTrendId = Number(button.getAttribute('data-show-link-trend'));
+          renderLinkDayTrendPanel();
+        });
+      });
+
+      renderLinkDayTrendPanel();
+    }
+
+    function drawLinkDayTrend(logs, link) {
+      const canvas = document.getElementById('link-day-trend-canvas');
+      const ctx = canvas.getContext('2d');
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const tomorrowStart = new Date(todayStart);
+      tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+      const labels = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+      const counts = Array.from({ length: 24 }, () => 0);
+
+      logs.forEach((log) => {
+        if (Number(log.link_id) !== Number(link.id)) {
+          return;
+        }
+        if (!(log.event_type === 'assignment_created' || log.event_type === 'assignment_reused')) {
+          return;
+        }
+        const statusCode = Number(log.status_code || 0);
+        if (statusCode < 200 || statusCode >= 400) {
+          return;
+        }
+
+        const d = new Date(log.created_at);
+        if (!(d >= todayStart && d < tomorrowStart)) {
+          return;
+        }
+
+        counts[d.getHours()] += 1;
+      });
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = '#0b1222';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(148, 171, 235, 0.22)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i += 1) {
+        const y = 24 + i * ((h - 48) / 4);
+        ctx.beginPath();
+        ctx.moveTo(40, y);
+        ctx.lineTo(w - 20, y);
+        ctx.stroke();
+      }
+
+      const max = Math.max(...counts, 5);
+      const stepX = (w - 80) / (counts.length - 1 || 1);
+      ctx.strokeStyle = '#3a66ff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+
+      counts.forEach((v, i) => {
+        const x = 40 + i * stepX;
+        const y = h - 24 - (v / max) * (h - 58);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = '#9eb3ea';
+      ctx.font = '12px IBM Plex Sans';
+      labels.forEach((label, i) => {
+        if (i % 2 !== 0) {
+          return;
+        }
+        const x = 40 + i * stepX - 8;
+        ctx.fillText(label, x, h - 6);
+      });
+    }
+
+    function renderLinkDayTrendPanel() {
+      const wrap = document.getElementById('link-day-trend-wrap');
+      const title = document.getElementById('link-day-trend-title');
+
+      if (!state.selectedLinkTrendId) {
+        wrap.style.display = 'none';
+        return;
+      }
+
+      const link = state.links.find((item) => Number(item.id) === Number(state.selectedLinkTrendId));
+      if (!link) {
+        wrap.style.display = 'none';
+        return;
+      }
+
+      wrap.style.display = 'block';
+      title.textContent = '当日点击曲线 #' + link.order_num;
+      drawLinkDayTrend(state.logs, link);
     }
 
     function renderCountries(countries) {
@@ -1557,16 +1691,18 @@ function getAdminHTML(): string {
         state.assignments = [];
         state.logs = [];
         state.countries = [];
+        state.selectedLinkTrendId = null;
         renderLinks([]);
         renderAssignments([]);
         renderLogs([]);
         renderCountries([]);
         renderAnalytics();
+        renderLinkDayTrendPanel();
         return;
       }
 
       const [links, assignments, logs, countries] = await Promise.all([
-        api('/api/links?domain_id=' + state.selectedDomainId),
+        api('/api/links?domain_id=' + state.selectedDomainId + '&range=' + encodeURIComponent(state.linkRange)),
         api('/api/assignments?domain_id=' + state.selectedDomainId),
         api('/api/access-logs?domain_id=' + state.selectedDomainId),
         api('/api/blocked-countries?domain_id=' + state.selectedDomainId)
@@ -1582,6 +1718,7 @@ function getAdminHTML(): string {
       renderLogs(logs);
       renderCountries(countries);
       renderAnalytics();
+      renderLinkDayTrendPanel();
     }
 
     async function loadOverview() {
@@ -1746,6 +1883,18 @@ function getAdminHTML(): string {
     document.getElementById('reload-logs-btn').addEventListener('click', () => loadDomainData().catch((error) => setMessage('link-message', error.message, 'error')));
 
     renderCountryPicker();
+
+    document.getElementById('link-range').addEventListener('change', (event) => {
+      const target = event.target;
+      const value = target && target.value ? String(target.value) : 'all';
+      state.linkRange = value;
+      loadDomainData().catch((error) => setMessage('link-message', error.message, 'error'));
+    });
+
+    document.getElementById('close-link-day-trend').addEventListener('click', () => {
+      state.selectedLinkTrendId = null;
+      renderLinkDayTrendPanel();
+    });
 
     loadOverview().catch((error) => {
       setMessage('domain-message', error.message, 'error');
@@ -1912,6 +2061,10 @@ async function handleCreateLink(req: Request, sql: SqlClient): Promise<Response>
 
 async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
   const domainId = Number(url.searchParams.get("domain_id"));
+  const range = String(url.searchParams.get("range") || "all").toLowerCase();
+  const normalizedRange = ["today", "yesterday", "day_before_yesterday", "7d", "all"].includes(range)
+    ? range
+    : "all";
 
   if (domainId) {
     const links = await sql`
@@ -1922,12 +2075,19 @@ async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
       FROM links l
       JOIN domains d ON d.id = l.domain_id
       LEFT JOIN (
-        SELECT link_id, COUNT(*)::int AS click_count
-        FROM access_logs
-        WHERE link_id IS NOT NULL
-          AND event_type IN ('assignment_created', 'assignment_reused')
-          AND status_code >= 200 AND status_code < 400
-        GROUP BY link_id
+        SELECT al.link_id, COUNT(*)::int AS click_count
+        FROM access_logs al
+        WHERE al.link_id IS NOT NULL
+          AND al.event_type IN ('assignment_created', 'assignment_reused')
+          AND al.status_code >= 200 AND al.status_code < 400
+          AND (
+            ${normalizedRange} = 'all'
+            OR (${normalizedRange} = 'today' AND al.created_at >= date_trunc('day', now()))
+            OR (${normalizedRange} = 'yesterday' AND al.created_at >= date_trunc('day', now()) - interval '1 day' AND al.created_at < date_trunc('day', now()))
+            OR (${normalizedRange} = 'day_before_yesterday' AND al.created_at >= date_trunc('day', now()) - interval '2 day' AND al.created_at < date_trunc('day', now()) - interval '1 day')
+            OR (${normalizedRange} = '7d' AND al.created_at >= now() - interval '7 day')
+          )
+        GROUP BY al.link_id
       ) clicks ON clicks.link_id = l.id
       WHERE l.domain_id = ${domainId}
       ORDER BY l.order_num ASC, l.created_at ASC
@@ -1943,12 +2103,19 @@ async function handleListLinks(url: URL, sql: SqlClient): Promise<Response> {
     FROM links l
     JOIN domains d ON d.id = l.domain_id
     LEFT JOIN (
-      SELECT link_id, COUNT(*)::int AS click_count
-      FROM access_logs
-      WHERE link_id IS NOT NULL
-        AND event_type IN ('assignment_created', 'assignment_reused')
-        AND status_code >= 200 AND status_code < 400
-      GROUP BY link_id
+      SELECT al.link_id, COUNT(*)::int AS click_count
+      FROM access_logs al
+      WHERE al.link_id IS NOT NULL
+        AND al.event_type IN ('assignment_created', 'assignment_reused')
+        AND al.status_code >= 200 AND al.status_code < 400
+        AND (
+          ${normalizedRange} = 'all'
+          OR (${normalizedRange} = 'today' AND al.created_at >= date_trunc('day', now()))
+          OR (${normalizedRange} = 'yesterday' AND al.created_at >= date_trunc('day', now()) - interval '1 day' AND al.created_at < date_trunc('day', now()))
+          OR (${normalizedRange} = 'day_before_yesterday' AND al.created_at >= date_trunc('day', now()) - interval '2 day' AND al.created_at < date_trunc('day', now()) - interval '1 day')
+          OR (${normalizedRange} = '7d' AND al.created_at >= now() - interval '7 day')
+        )
+      GROUP BY al.link_id
     ) clicks ON clicks.link_id = l.id
     ORDER BY d.domain_name ASC, l.order_num ASC, l.created_at ASC
   `;
