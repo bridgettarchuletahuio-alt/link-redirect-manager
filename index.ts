@@ -15,9 +15,26 @@ type LinkRow = {
   created_at: string;
 };
 
+type CloudflareOAuthTokenRow = {
+  id: number;
+  access_token: string;
+  refresh_token: string | null;
+  token_type: string | null;
+  scope: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 const PORT = Number(Bun.env.PORT || 8000);
 const HAS_DATABASE_URL = Boolean(Bun.env.DATABASE_URL);
-const CLOUDFLARE_AUTH_URL = Bun.env.CLOUDFLARE_AUTH_URL || "https://www.cloudflare.com/";
+const CLOUDFLARE_OAUTH_CLIENT_ID = Bun.env.CLOUDFLARE_OAUTH_CLIENT_ID || "";
+const CLOUDFLARE_OAUTH_CLIENT_SECRET = Bun.env.CLOUDFLARE_OAUTH_CLIENT_SECRET || "";
+const CLOUDFLARE_OAUTH_SCOPES = Bun.env.CLOUDFLARE_OAUTH_SCOPES || "com.cloudflare.api.account.zone.dns";
+const CLOUDFLARE_OAUTH_AUTHORIZE_URL = Bun.env.CLOUDFLARE_OAUTH_AUTHORIZE_URL || "https://dash.cloudflare.com/oauth2/auth";
+const CLOUDFLARE_OAUTH_TOKEN_URL = Bun.env.CLOUDFLARE_OAUTH_TOKEN_URL || "https://dash.cloudflare.com/oauth2/token";
+const CLOUDFLARE_OAUTH_REDIRECT_URI = Bun.env.CLOUDFLARE_OAUTH_REDIRECT_URI || "";
+const CLOUDFLARE_OAUTH_CONFIGURED = Boolean(CLOUDFLARE_OAUTH_CLIENT_ID && CLOUDFLARE_OAUTH_CLIENT_SECRET);
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -51,6 +68,42 @@ function getRequestHost(req: Request): string {
 
 function normalizeHostToDomain(hostRaw: string): string {
   return hostRaw.split(":")[0].trim().toLowerCase();
+}
+
+function getRequestOrigin(req: Request): string {
+  const proto = req.headers.get("x-forwarded-proto") || "http";
+  const host = getRequestHost(req);
+  return host ? `${proto}://${host}` : "";
+}
+
+function getCloudflareRedirectUri(req: Request): string {
+  if (CLOUDFLARE_OAUTH_REDIRECT_URI) {
+    return CLOUDFLARE_OAUTH_REDIRECT_URI;
+  }
+
+  return `${getRequestOrigin(req)}/api/cloudflare/oauth/callback`;
+}
+
+function getCookie(req: Request, name: string): string | null {
+  const cookieHeader = req.headers.get("cookie");
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const pairs = cookieHeader.split(";").map((part) => part.trim());
+  for (const pair of pairs) {
+    const [key, ...rest] = pair.split("=");
+    if (key === name) {
+      return decodeURIComponent(rest.join("="));
+    }
+  }
+
+  return null;
+}
+
+function buildCookie(name: string, value: string, maxAgeSeconds: number, secure: boolean): string {
+  const secureAttr = secure ? "; Secure" : "";
+  return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secureAttr}`;
 }
 
 async function getCountryFromIP(ip: string): Promise<string> {
@@ -147,6 +200,19 @@ async function initDB() {
       )
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS cloudflare_oauth_tokens (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        token_type VARCHAR(32),
+        scope TEXT,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Database initialization error:", error);
@@ -193,6 +259,206 @@ async function writeAccessLog(
       ${params.detail}
     )
   `;
+}
+
+async function getCloudflareOAuthToken(sql: SqlClient): Promise<CloudflareOAuthTokenRow | null> {
+  const rows = await sql`
+    SELECT * FROM cloudflare_oauth_tokens WHERE id = 1
+  `;
+
+  return rows[0] ?? null;
+}
+
+async function saveCloudflareOAuthToken(
+  sql: SqlClient,
+  token: {
+    accessToken: string;
+    refreshToken?: string;
+    tokenType?: string;
+    scope?: string;
+    expiresAt?: string | null;
+  }
+) {
+  await sql`
+    INSERT INTO cloudflare_oauth_tokens (
+      id,
+      access_token,
+      refresh_token,
+      token_type,
+      scope,
+      expires_at,
+      updated_at
+    )
+    VALUES (
+      1,
+      ${token.accessToken},
+      ${token.refreshToken ?? null},
+      ${token.tokenType ?? null},
+      ${token.scope ?? null},
+      ${token.expiresAt ?? null},
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT (id)
+    DO UPDATE SET
+      access_token = EXCLUDED.access_token,
+      refresh_token = EXCLUDED.refresh_token,
+      token_type = EXCLUDED.token_type,
+      scope = EXCLUDED.scope,
+      expires_at = EXCLUDED.expires_at,
+      updated_at = CURRENT_TIMESTAMP
+  `;
+}
+
+async function clearCloudflareOAuthToken(sql: SqlClient) {
+  await sql`
+    DELETE FROM cloudflare_oauth_tokens WHERE id = 1
+  `;
+}
+
+async function handleCloudflareOAuthStatus(req: Request, sql: SqlClient): Promise<Response> {
+  if (!HAS_DATABASE_URL) {
+    return jsonResponse({
+      configured: CLOUDFLARE_OAUTH_CONFIGURED,
+      authorized: false,
+      reason: "DATABASE_URL is required",
+    });
+  }
+
+  const token = await getCloudflareOAuthToken(sql);
+  const expiresMs = token?.expires_at ? new Date(token.expires_at).getTime() : null;
+  const authorized = Boolean(token && (!expiresMs || expiresMs > Date.now()));
+
+  return jsonResponse({
+    configured: CLOUDFLARE_OAUTH_CONFIGURED,
+    authorized,
+    scope: token?.scope ?? null,
+    expiresAt: token?.expires_at ?? null,
+    redirectUri: getCloudflareRedirectUri(req),
+  });
+}
+
+async function handleCloudflareOAuthStart(req: Request): Promise<Response> {
+  if (!CLOUDFLARE_OAUTH_CONFIGURED) {
+    return jsonResponse({ error: "Cloudflare OAuth is not configured" }, 500);
+  }
+
+  const reqUrl = new URL(req.url);
+  const state = crypto.randomUUID();
+  const returnTo = reqUrl.searchParams.get("return_to") || "/admin";
+  const redirectUri = getCloudflareRedirectUri(req);
+
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: CLOUDFLARE_OAUTH_CLIENT_ID,
+    redirect_uri: redirectUri,
+    scope: CLOUDFLARE_OAUTH_SCOPES,
+    state,
+  });
+
+  const secure = (req.headers.get("x-forwarded-proto") || "").toLowerCase() === "https";
+  const headers = new Headers({
+    Location: `${CLOUDFLARE_OAUTH_AUTHORIZE_URL}?${params.toString()}`,
+  });
+  headers.append("Set-Cookie", buildCookie("cf_oauth_state", state, 600, secure));
+  headers.append("Set-Cookie", buildCookie("cf_oauth_return_to", returnTo, 600, secure));
+
+  return new Response(null, { status: 302, headers });
+}
+
+async function handleCloudflareOAuthCallback(req: Request, sql: SqlClient): Promise<Response> {
+  const reqUrl = new URL(req.url);
+  const code = reqUrl.searchParams.get("code");
+  const state = reqUrl.searchParams.get("state");
+  const oauthError = reqUrl.searchParams.get("error");
+  const stateCookie = getCookie(req, "cf_oauth_state");
+  const returnTo = getCookie(req, "cf_oauth_return_to") || "/admin";
+
+  const headers = new Headers();
+  headers.append("Set-Cookie", "cf_oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+  headers.append("Set-Cookie", "cf_oauth_return_to=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+
+  if (oauthError) {
+    headers.set("Location", `${returnTo}?cf_oauth=error`);
+    return new Response(null, { status: 302, headers });
+  }
+
+  if (!CLOUDFLARE_OAUTH_CONFIGURED) {
+    headers.set("Location", `${returnTo}?cf_oauth=not_configured`);
+    return new Response(null, { status: 302, headers });
+  }
+
+  if (!HAS_DATABASE_URL) {
+    headers.set("Location", `${returnTo}?cf_oauth=no_database`);
+    return new Response(null, { status: 302, headers });
+  }
+
+  if (!code || !state || !stateCookie || state !== stateCookie) {
+    headers.set("Location", `${returnTo}?cf_oauth=invalid_state`);
+    return new Response(null, { status: 302, headers });
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: CLOUDFLARE_OAUTH_CLIENT_ID,
+    client_secret: CLOUDFLARE_OAUTH_CLIENT_SECRET,
+    redirect_uri: getCloudflareRedirectUri(req),
+  });
+
+  try {
+    const tokenRes = await fetch(CLOUDFLARE_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+
+    if (!tokenRes.ok) {
+      console.error("Cloudflare OAuth token exchange failed:", await tokenRes.text());
+      headers.set("Location", `${returnTo}?cf_oauth=token_error`);
+      return new Response(null, { status: 302, headers });
+    }
+
+    const tokenData = await tokenRes.json() as {
+      access_token: string;
+      refresh_token?: string;
+      token_type?: string;
+      scope?: string;
+      expires_in?: number;
+    };
+
+    if (!tokenData.access_token) {
+      headers.set("Location", `${returnTo}?cf_oauth=token_missing`);
+      return new Response(null, { status: 302, headers });
+    }
+
+    const expiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+      : null;
+
+    await saveCloudflareOAuthToken(sql, {
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      tokenType: tokenData.token_type,
+      scope: tokenData.scope,
+      expiresAt,
+    });
+
+    headers.set("Location", `${returnTo}?cf_oauth=success`);
+    return new Response(null, { status: 302, headers });
+  } catch (error) {
+    console.error("Cloudflare OAuth callback error:", error);
+    headers.set("Location", `${returnTo}?cf_oauth=server_error`);
+    return new Response(null, { status: 302, headers });
+  }
+}
+
+async function handleCloudflareOAuthRevoke(sql: SqlClient): Promise<Response> {
+  if (!HAS_DATABASE_URL) {
+    return jsonResponse({ error: "DATABASE_URL is required" }, 400);
+  }
+
+  await clearCloudflareOAuthToken(sql);
+  return jsonResponse({ success: true });
 }
 
 function getAdminHTML(): string {
@@ -792,7 +1058,7 @@ function getAdminHTML(): string {
   </main>
 
   <script>
-    const CLOUDFLARE_AUTH_URL = ${JSON.stringify(CLOUDFLARE_AUTH_URL)};
+    const CLOUDFLARE_OAUTH_ENABLED = ${JSON.stringify(CLOUDFLARE_OAUTH_CONFIGURED)};
 
     const state = {
       domains: [],
@@ -809,6 +1075,20 @@ function getAdminHTML(): string {
       const el = document.getElementById(id);
       el.textContent = text || '';
       el.className = 'message' + (type ? ' ' + type : '');
+    }
+
+    async function ensureCloudflareAuthorized() {
+      if (!CLOUDFLARE_OAUTH_ENABLED) {
+        throw new Error('Cloudflare OAuth 未配置，请先设置 CLOUDFLARE_OAUTH_CLIENT_ID 与 CLOUDFLARE_OAUTH_CLIENT_SECRET');
+      }
+
+      const status = await api('/api/cloudflare/oauth/status');
+      if (status.authorized) {
+        return;
+      }
+
+      window.location.href = '/api/cloudflare/oauth/start?return_to=' + encodeURIComponent('/admin');
+      throw new Error('正在跳转 Cloudflare OAuth 授权...');
     }
 
     function requireDomain() {
@@ -1194,6 +1474,8 @@ function getAdminHTML(): string {
       }
 
       try {
+        await ensureCloudflareAuthorized();
+
         const domain = await api('/api/domains', {
           method: 'POST',
           body: JSON.stringify({ domain_name: domainName })
@@ -1201,10 +1483,13 @@ function getAdminHTML(): string {
         input.value = '';
         state.selectedDomainId = domain.id;
         state.selectedDomainName = domain.domain_name;
-        setMessage('domain-message', '入口域名已创建，正在跳转 Cloudflare 授权页面...', 'success');
+        setMessage('domain-message', '入口域名已创建', 'success');
         await loadOverview();
-        window.location.href = CLOUDFLARE_AUTH_URL;
       } catch (error) {
+        if (error.message && error.message.includes('正在跳转 Cloudflare OAuth 授权')) {
+          setMessage('domain-message', error.message, 'success');
+          return;
+        }
         setMessage('domain-message', error.message, 'error');
       }
     });
@@ -1311,6 +1596,24 @@ function getAdminHTML(): string {
     loadOverview().catch((error) => {
       setMessage('domain-message', error.message, 'error');
     });
+
+    (() => {
+      const q = new URLSearchParams(location.search);
+      const oauth = q.get('cf_oauth');
+      if (!oauth) {
+        return;
+      }
+
+      if (oauth === 'success') {
+        setMessage('domain-message', 'Cloudflare OAuth 授权成功，可以继续创建入口域名', 'success');
+      } else {
+        setMessage('domain-message', 'Cloudflare OAuth 授权失败：' + oauth, 'error');
+      }
+
+      q.delete('cf_oauth');
+      const next = q.toString();
+      history.replaceState({}, '', next ? ('/admin?' + next) : '/admin');
+    })();
   </script>
 </body>
 </html>`;
@@ -1746,6 +2049,22 @@ async function handleRequest(req: Request): Promise<Response> {
         version: APP_VERSION,
         service: "link-redirect-manager",
       });
+    }
+
+    if (path === "/api/cloudflare/oauth/status" && method === "GET") {
+      return handleCloudflareOAuthStatus(req, sql);
+    }
+
+    if (path === "/api/cloudflare/oauth/start" && method === "GET") {
+      return handleCloudflareOAuthStart(req);
+    }
+
+    if (path === "/api/cloudflare/oauth/callback" && method === "GET") {
+      return handleCloudflareOAuthCallback(req, sql);
+    }
+
+    if (path === "/api/cloudflare/oauth/token" && method === "DELETE") {
+      return handleCloudflareOAuthRevoke(sql);
     }
 
     if (path === "/api/domains" && method === "POST") {
