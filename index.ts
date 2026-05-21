@@ -2075,7 +2075,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     const redirectMatch = path.match(/^\/api\/redirect\/(.+)$/);
     if (redirectMatch && method === "GET") {
-      return handleRedirect(redirectMatch[1], req, sql);
+      return handleRedirect(redirectMatch[1], req, sql, "http");
     }
 
     return jsonResponse({ error: "Not found" }, 404);
