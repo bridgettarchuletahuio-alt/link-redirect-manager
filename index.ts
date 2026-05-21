@@ -1,3 +1,5 @@
+/// <reference types="bun" />
+
 type SqlClient = typeof Bun.sql;
 
 type DomainRow = {
@@ -254,7 +256,7 @@ async function resolveDomain(sql: SqlClient, domainName: string): Promise<Domain
 
   const result = await sql`SELECT * FROM domains ORDER BY created_at DESC`;
   return (
-    result.find((row) => normalizeDomainInput(row.domain_name) === normalizedTarget) ?? null
+    (result as DomainRow[]).find((row) => normalizeDomainInput(row.domain_name) === normalizedTarget) ?? null
   );
 }
 
@@ -411,12 +413,29 @@ async function syncCloudflareCnameRecord(domainName: string): Promise<{ synced: 
     };
   }
 
-  type CloudflareDnsRecord = { id: string };
+  type CloudflareDnsRecord = { id: string; type: string };
   type CloudflareListResponse = { result: CloudflareDnsRecord[] };
 
   const list = await cloudflareApiRequest<CloudflareListResponse>(
-    `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records?type=CNAME&name=${encodeURIComponent(domainName)}&per_page=1`
+    `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records?name=${encodeURIComponent(domainName)}&per_page=100`
   );
+
+  const syncableTypes = new Set(["A", "AAAA", "CNAME"]);
+  const syncableRecords = (list.result || []).filter((record) => syncableTypes.has(record.type));
+  const existingCname = syncableRecords.find((record) => record.type === "CNAME");
+
+  for (const record of syncableRecords) {
+    if (existingCname && record.id === existingCname.id) {
+      continue;
+    }
+
+    await cloudflareApiRequest(
+      `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records/${encodeURIComponent(record.id)}`,
+      {
+        method: "DELETE",
+      }
+    );
+  }
 
   const body = JSON.stringify({
     type: "CNAME",
@@ -426,9 +445,9 @@ async function syncCloudflareCnameRecord(domainName: string): Promise<{ synced: 
     ttl: 1,
   });
 
-  if (list.result?.[0]?.id) {
+  if (existingCname?.id) {
     await cloudflareApiRequest(
-      `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records/${encodeURIComponent(list.result[0].id)}`,
+      `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records/${encodeURIComponent(existingCname.id)}`,
       {
         method: "PUT",
         body,
@@ -1474,8 +1493,6 @@ function getAdminHTML(): string {
       }
 
       try {
-        await ensureCloudflareTokenReady();
-
         const domain = await api('/api/domains', {
           method: 'POST',
           body: JSON.stringify({ domain_name: domainName })
@@ -1647,6 +1664,16 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
     return jsonResponse({ error: "domain_name is required" }, 400);
   }
 
+  if (!CLOUDFLARE_AUTO_DNS_ENABLED) {
+    return jsonResponse(
+      {
+        error:
+          "Cloudflare DNS sync is not configured. Set CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID, and CLOUDFLARE_DNS_TARGET first.",
+      },
+      400
+    );
+  }
+
   const result = await sql`
     INSERT INTO domains (domain_name)
     VALUES (${domainName})
@@ -1717,6 +1744,7 @@ async function handleCreateLink(req: Request, sql: SqlClient): Promise<Response>
     `;
 
     return jsonResponse(result[0], 201);
+
   } catch (error) {
     console.error("Create link error:", error);
     return jsonResponse({ error: "Failed to create link. Check domain existence and uniqueness." }, 400);
@@ -1899,7 +1927,7 @@ async function handleRedirect(
   `;
 
   if (allowedCountries.length > 0) {
-    const isAllowed = allowedCountries.some((row) => row.country_code === countryCode);
+    const isAllowed = (allowedCountries as { country_code: string }[]).some((row) => row.country_code === countryCode);
 
     if (!isAllowed) {
       await writeAccessLog(sql, {

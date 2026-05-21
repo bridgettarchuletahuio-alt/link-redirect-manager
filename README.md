@@ -15,7 +15,7 @@
 - Bun
 - PostgreSQL
 - DATABASE_URL 环境变量
-- Cloudflare API Token（可选，但创建入口域名前会校验 Token 状态）
+- Cloudflare API Token、CLOUDFLARE_ZONE_ID、CLOUDFLARE_DNS_TARGET（创建入口域名时必须配置，用于自动同步 Cloudflare DNS）
 
 Cloudflare Token 相关环境变量：
 
