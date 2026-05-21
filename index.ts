@@ -1915,6 +1915,44 @@ async function handleRedirect(
     }
   }
 
+  const existingAssignment = await sql`
+    SELECT ia.link_id, l.order_num, l.target_url
+    FROM ip_assignments ia
+    JOIN links l ON l.id = ia.link_id
+    WHERE ia.domain_id = ${domain.id} AND ia.ip_address = ${clientIP}
+  `;
+
+  if (existingAssignment[0]) {
+    const assignedLink = {
+      id: existingAssignment[0].link_id,
+      domain_id: domain.id,
+      domain_name: domain.domain_name,
+      order_num: existingAssignment[0].order_num,
+      target_url: existingAssignment[0].target_url,
+      created_at: "",
+    };
+
+    await writeAccessLog(sql, {
+      domainId: domain.id,
+      linkId: assignedLink.id,
+      ipAddress: clientIP,
+      countryCode,
+      eventType: "assignment_reused",
+      statusCode: 200,
+      detail: `Reused existing assignment for order ${assignedLink.order_num}`,
+    });
+
+    if (responseMode === "http") {
+      return Response.redirect(assignedLink.target_url, 302);
+    }
+
+    return jsonResponse({
+      url: assignedLink.target_url,
+      order: assignedLink.order_num,
+      message: "This IP is locked to this link",
+    });
+  }
+
   const allLinks = await sql`
     SELECT l.*, d.domain_name
     FROM links l
@@ -1956,27 +1994,45 @@ async function handleRedirect(
     INSERT INTO ip_assignments (domain_id, link_id, ip_address, country_code)
     VALUES (${domain.id}, ${selectedLink.id}, ${clientIP}, ${countryCode})
     ON CONFLICT (domain_id, ip_address)
-    DO UPDATE SET link_id = EXCLUDED.link_id, country_code = EXCLUDED.country_code
+    DO NOTHING
   `;
+
+  const assignedRows = await sql`
+    SELECT ia.link_id, l.order_num, l.target_url
+    FROM ip_assignments ia
+    JOIN links l ON l.id = ia.link_id
+    WHERE ia.domain_id = ${domain.id} AND ia.ip_address = ${clientIP}
+  `;
+
+  const resolvedAssignedLink = assignedRows[0]
+    ? {
+        id: assignedRows[0].link_id,
+        domain_id: domain.id,
+        domain_name: domain.domain_name,
+        order_num: assignedRows[0].order_num,
+        target_url: assignedRows[0].target_url,
+        created_at: "",
+      }
+    : selectedLink;
 
   await writeAccessLog(sql, {
     domainId: domain.id,
-    linkId: selectedLink.id,
+    linkId: resolvedAssignedLink.id,
     ipAddress: clientIP,
     countryCode,
-    eventType: "rotation_served",
+    eventType: "assignment_created",
     statusCode: 200,
-    detail: `Served order ${selectedLink.order_num} at rotation index ${nextLinkIndex}`,
+    detail: `Assigned IP to order ${resolvedAssignedLink.order_num}`,
   });
 
   if (responseMode === "http") {
-    return Response.redirect(selectedLink.target_url, 302);
+    return Response.redirect(resolvedAssignedLink.target_url, 302);
   }
 
   return jsonResponse({
-    url: selectedLink.target_url,
-    order: selectedLink.order_num,
-    message: "Redirecting to the next link",
+    url: resolvedAssignedLink.target_url,
+    order: resolvedAssignedLink.order_num,
+    message: "This IP is locked to this link",
   });
 }
 
