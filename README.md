@@ -25,10 +25,23 @@ Cloudflare Token 相关环境变量：
 - CLOUDFLARE_DNS_TARGET（可选，自动 CNAME 指向目标，如 `your-service.up.railway.app`）
 - CLOUDFLARE_DNS_PROXIED（可选，默认 `true`）
 
+Railway 自定义域名自动绑定相关环境变量（推荐配置）：
+
+- RAILWAY_TOKEN（Railway API Token）
+- RAILWAY_PROJECT_ID
+- RAILWAY_ENVIRONMENT_ID
+- RAILWAY_SERVICE_ID
+- RAILWAY_APP_DOMAIN（可选，仅用于配置提示）
+
 当配置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_DNS_TARGET` 时：
 
 - 创建入口域名会自动按域名名称查找对应的 Cloudflare Zone，并创建或更新 CNAME 记录
 - 若 DNS 同步失败，会回滚刚创建的入口域名，避免数据不一致
+
+当同时配置 Railway 变量时：
+
+- 创建入口域名会先调用 Railway GraphQL API 绑定自定义域名，再同步 Cloudflare DNS
+- 若 Railway 绑定失败，会回滚刚创建的入口域名
 
 ## 快速开始
 

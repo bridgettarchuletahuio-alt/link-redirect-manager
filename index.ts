@@ -73,6 +73,14 @@ const CLOUDFLARE_DNS_PROXIED = (Bun.env.CLOUDFLARE_DNS_PROXIED || "true").toLowe
 const CLOUDFLARE_TOKEN_CONFIGURED = Boolean(CLOUDFLARE_API_TOKEN);
 const CLOUDFLARE_AUTO_DNS_ENABLED = Boolean(CLOUDFLARE_API_TOKEN && CLOUDFLARE_DNS_TARGET);
 const CLOUDFLARE_ZONE_CACHE = new Map<string, string>();
+const RAILWAY_TOKEN = Bun.env.RAILWAY_TOKEN || "";
+const RAILWAY_PROJECT_ID = Bun.env.RAILWAY_PROJECT_ID || "";
+const RAILWAY_ENVIRONMENT_ID = Bun.env.RAILWAY_ENVIRONMENT_ID || "";
+const RAILWAY_SERVICE_ID = Bun.env.RAILWAY_SERVICE_ID || "";
+const RAILWAY_APP_DOMAIN = Bun.env.RAILWAY_APP_DOMAIN || "";
+const RAILWAY_CONFIGURED = Boolean(
+  RAILWAY_TOKEN && RAILWAY_PROJECT_ID && RAILWAY_ENVIRONMENT_ID && RAILWAY_SERVICE_ID
+);
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -384,6 +392,16 @@ async function handleCloudflareTokenStatus(): Promise<Response> {
   });
 }
 
+async function handleRailwayStatus(): Promise<Response> {
+  return jsonResponse({
+    configured: RAILWAY_CONFIGURED,
+    projectIdConfigured: Boolean(RAILWAY_PROJECT_ID),
+    environmentIdConfigured: Boolean(RAILWAY_ENVIRONMENT_ID),
+    serviceIdConfigured: Boolean(RAILWAY_SERVICE_ID),
+    appDomainConfigured: Boolean(RAILWAY_APP_DOMAIN),
+  });
+}
+
 async function cloudflareApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${CLOUDFLARE_API_BASE}${path}`, {
     ...init,
@@ -406,6 +424,66 @@ async function cloudflareApiRequest<T>(path: string, init?: RequestInit): Promis
   }
 
   return data as T;
+}
+
+async function railwayGraphqlRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  const response = await fetch("https://backboard.railway.com/graphql/v2", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RAILWAY_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  const data = await response.json().catch(() => ({} as Record<string, unknown>));
+  if (!response.ok || (data as { errors?: Array<{ message?: string }> }).errors?.length) {
+    const message = (data as { errors?: Array<{ message?: string }> }).errors?.[0]?.message || "Railway GraphQL request failed";
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+async function bindRailwayCustomDomain(domainName: string): Promise<{ bound: boolean; message: string }> {
+  if (!RAILWAY_CONFIGURED) {
+    return {
+      bound: false,
+      message: "Railway binding skipped (missing RAILWAY_TOKEN or project/environment/service IDs)",
+    };
+  }
+
+  if (RAILWAY_APP_DOMAIN && normalizeDomainInput(RAILWAY_APP_DOMAIN) !== normalizeDomainInput(domainName)) {
+    // Keep the app domain only as a safety hint; binding is handled by the service IDs.
+  }
+
+  const mutation = `
+    mutation customDomainCreate($input: CustomDomainCreateInput!) {
+      customDomainCreate(input: $input) {
+        id
+        domain
+        status {
+          verificationToken
+          dnsRecords {
+            hostlabel
+            requiredValue
+            status
+          }
+        }
+      }
+    }
+  `;
+
+  await railwayGraphqlRequest<{ customDomainCreate: { id: string; domain: string } }>(mutation, {
+    input: {
+      projectId: RAILWAY_PROJECT_ID,
+      environmentId: RAILWAY_ENVIRONMENT_ID,
+      serviceId: RAILWAY_SERVICE_ID,
+      domain: domainName,
+    },
+  });
+
+  return { bound: true, message: "Railway custom domain bound" };
 }
 
 type CloudflareZone = { id: string; name: string };
@@ -1554,9 +1632,11 @@ function getAdminHTML(): string {
         input.value = '';
         state.selectedDomainId = domain.id;
         state.selectedDomainName = domain.domain_name;
+        const railwaySuffix = domain.railway_message ? ('，' + domain.railway_message) : '';
         const dnsSuffix = domain.dns_message ? ('，' + domain.dns_message) : '';
         const createLabel = domain.created ? '子链接入口已创建' : '子链接入口已同步';
-        setMessage('domain-message', createLabel + dnsSuffix, domain.dns_synced ? 'success' : '');
+        const isSuccess = domain.railway_bound && domain.dns_synced;
+        setMessage('domain-message', createLabel + railwaySuffix + dnsSuffix, isSuccess ? 'success' : '');
         await loadOverview();
       } catch (error) {
         setMessage('domain-message', error.message, 'error');
@@ -1752,8 +1832,14 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
 
   let dnsSynced = false;
   let dnsMessage = "Auto DNS disabled";
+  let railwayBound = false;
+  let railwayMessage = "Railway binding disabled";
 
   try {
+    const railwayResult = await bindRailwayCustomDomain(domainName);
+    railwayBound = railwayResult.bound;
+    railwayMessage = railwayResult.message;
+
     const dnsResult = await syncCloudflareCnameRecord(domainName);
     dnsSynced = dnsResult.synced;
     dnsMessage = dnsResult.message;
@@ -1771,6 +1857,8 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
   return jsonResponse({
     ...domainRow,
     created,
+    railway_bound: railwayBound,
+    railway_message: railwayMessage,
     dns_synced: dnsSynced,
     dns_message: dnsMessage,
   }, created ? 201 : 200);
@@ -2210,6 +2298,10 @@ async function handleRequest(req: Request): Promise<Response> {
         version: APP_VERSION,
         service: "link-redirect-manager",
       });
+    }
+
+    if (path === "/api/railway/status" && method === "GET") {
+      return handleRailwayStatus();
     }
 
     if (path === "/api/cloudflare/token/status" && method === "GET") {
