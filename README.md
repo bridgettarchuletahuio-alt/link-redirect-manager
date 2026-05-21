@@ -15,19 +15,19 @@
 - Bun
 - PostgreSQL
 - DATABASE_URL 环境变量
-- Cloudflare API Token、CLOUDFLARE_ZONE_ID、CLOUDFLARE_DNS_TARGET（创建入口域名时必须配置，用于自动同步 Cloudflare DNS）
+- Cloudflare API Token、CLOUDFLARE_DNS_TARGET（创建入口域名时必须配置，用于自动同步 Cloudflare DNS）
 
 Cloudflare Token 相关环境变量：
 
 - CLOUDFLARE_API_TOKEN
 - CLOUDFLARE_API_BASE（可选，默认 `https://api.cloudflare.com/client/v4`）
-- CLOUDFLARE_ZONE_ID（可选，配置后可自动写 DNS）
+- CLOUDFLARE_ZONE_ID（可选，手动固定到单个 zone 的覆盖值；多域名场景建议留空，让系统按域名自动查找 zone）
 - CLOUDFLARE_DNS_TARGET（可选，自动 CNAME 指向目标，如 `your-service.up.railway.app`）
 - CLOUDFLARE_DNS_PROXIED（可选，默认 `true`）
 
-当同时配置 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ZONE_ID`、`CLOUDFLARE_DNS_TARGET` 时：
+当配置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_DNS_TARGET` 时：
 
-- 创建入口域名会自动在 Cloudflare Zone 内创建或更新 CNAME 记录
+- 创建入口域名会自动按域名名称查找对应的 Cloudflare Zone，并创建或更新 CNAME 记录
 - 若 DNS 同步失败，会回滚刚创建的入口域名，避免数据不一致
 
 ## 快速开始
