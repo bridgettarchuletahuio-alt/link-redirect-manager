@@ -1137,7 +1137,8 @@ function getAdminHTML(): string {
               <button class="btn-primary" id="add-link-btn">添加链接</button>
             </div>
             <div class="stack">
-              <h2>允许国家</h2>
+              <h2>允许国家（域名全局）</h2>
+              <p class="desc">对当前入口域名全局生效，影响该域名下所有子链接。</p>
               <div class="field">
                 <label for="country-code">国家/地区</label>
                 <select id="country-code"></select>
@@ -1375,7 +1376,7 @@ function getAdminHTML(): string {
     function renderCountries(countries) {
       const wrap = document.getElementById('countries-list');
       if (!countries.length) {
-        wrap.innerHTML = '<div class="empty">当前子链接入口没有允许国家限制，默认全部国家都可访问。</div>';
+        wrap.innerHTML = '<div class="empty">当前域名未设置全局允许国家，默认全部国家都可访问。</div>';
         return;
       }
 
@@ -1394,7 +1395,7 @@ function getAdminHTML(): string {
               method: 'DELETE',
               headers: { 'X-Domain-Id': String(state.selectedDomainId) }
             });
-            setMessage('country-message', '已删除允许国家', 'success');
+            setMessage('country-message', '已删除域名全局允许国家', 'success');
             await loadOverview();
           } catch (error) {
             setMessage('country-message', error.message, 'error');
@@ -1694,7 +1695,7 @@ function getAdminHTML(): string {
           body: JSON.stringify({ domain_id: state.selectedDomainId, country_code: countryCode })
         });
         input.value = '';
-        setMessage('country-message', '允许国家已添加', 'success');
+        setMessage('country-message', '域名全局允许国家已添加', 'success');
         await loadOverview();
       } catch (error) {
         setMessage('country-message', error.message, 'error');
@@ -1997,6 +1998,13 @@ async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise
     return jsonResponse({ error: "domain_id and country_code are required" }, 400);
   }
 
+  const domainRows = await sql`
+    SELECT id FROM domains WHERE id = ${domainId} LIMIT 1
+  `;
+  if (!domainRows[0]) {
+    return jsonResponse({ error: "Domain not found for allowed country config" }, 404);
+  }
+
   try {
     const result = await sql`
       INSERT INTO blocked_countries (domain_id, country_code)
@@ -2012,7 +2020,18 @@ async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise
     return jsonResponse(result[0], 201);
   } catch (error) {
     console.error("Create blocked country error:", error);
-    return jsonResponse({ error: "Failed to add allowed country" }, 400);
+    const pgError = error as { code?: string; message?: string; detail?: string };
+    if (pgError.code === "23503") {
+      return jsonResponse({ error: "Domain not found for allowed country config" }, 404);
+    }
+    if (pgError.code === "23505") {
+      return jsonResponse({ error: "Country is already allowed for this domain" }, 409);
+    }
+
+    return jsonResponse(
+      { error: pgError.detail || pgError.message || "Failed to add allowed country" },
+      400
+    );
   }
 }
 
