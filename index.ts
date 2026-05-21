@@ -15,6 +15,12 @@ type LinkRow = {
   created_at: string;
 };
 
+type DomainRotationRow = {
+  domain_id: number;
+  next_link_index: number;
+  updated_at: string;
+};
+
 const COUNTRY_OPTIONS = [
   { code: "US", name: "美国" },
   { code: "JP", name: "日本" },
@@ -177,6 +183,14 @@ async function initDB() {
         country_code VARCHAR(16),
         assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(domain_id, ip_address)
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS domain_rotations (
+        domain_id INTEGER PRIMARY KEY REFERENCES domains(id) ON DELETE CASCADE,
+        next_link_index INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
 
@@ -1875,86 +1889,68 @@ async function handleRedirect(
     }
   }
 
-  const existingAssignment = await sql`
-    SELECT ia.link_id, l.order_num, l.target_url
-    FROM ip_assignments ia
-    JOIN links l ON l.id = ia.link_id
-    WHERE ia.domain_id = ${domain.id} AND ia.ip_address = ${clientIP}
+  const allLinks = await sql`
+    SELECT l.*, d.domain_name
+    FROM links l
+    JOIN domains d ON d.id = l.domain_id
+    WHERE l.domain_id = ${domain.id}
+    ORDER BY l.order_num ASC, l.created_at ASC
   `;
 
-  let assignedLink: LinkRow | null = null;
-  let eventType = "assignment_reused";
-  let detail = "Existing IP assignment reused";
+  if (!allLinks.length) {
+    await writeAccessLog(sql, {
+      domainId: domain.id,
+      ipAddress: clientIP,
+      countryCode,
+      eventType: "missing_links",
+      statusCode: 404,
+      detail: "Domain has no links configured",
+    });
 
-  if (existingAssignment[0]) {
-    assignedLink = {
-      id: existingAssignment[0].link_id,
-      domain_id: domain.id,
-      domain_name: domain.domain_name,
-      order_num: existingAssignment[0].order_num,
-      target_url: existingAssignment[0].target_url,
-      created_at: "",
-    };
-  } else {
-    const allLinks = await sql`
-      SELECT l.*, d.domain_name
-      FROM links l
-      JOIN domains d ON d.id = l.domain_id
-      WHERE l.domain_id = ${domain.id}
-      ORDER BY l.order_num ASC, l.created_at ASC
-    `;
-
-    if (!allLinks.length) {
-      await writeAccessLog(sql, {
-        domainId: domain.id,
-        ipAddress: clientIP,
-        countryCode,
-        eventType: "missing_links",
-        statusCode: 404,
-        detail: "Domain has no links configured",
-      });
-
-      return jsonResponse({ error: "No links available" }, 404);
-    }
-
-    const selectedLink = allLinks[Math.floor(Math.random() * allLinks.length)]!;
-    assignedLink = selectedLink;
-    eventType = "assignment_created";
-    detail = `Assigned IP to order ${selectedLink.order_num}`;
-
-    await sql`
-      INSERT INTO ip_assignments (domain_id, link_id, ip_address, country_code)
-      VALUES (${domain.id}, ${selectedLink.id}, ${clientIP}, ${countryCode})
-      ON CONFLICT (domain_id, ip_address)
-      DO UPDATE SET link_id = EXCLUDED.link_id, country_code = EXCLUDED.country_code
-    `;
+    return jsonResponse({ error: "No links available" }, 404);
   }
 
-  if (!assignedLink) {
-    console.error("Assignment resolution failed for domain:", domain.domain_name);
-    return jsonResponse({ error: "Failed to resolve redirect target" }, 500);
-  }
+  const rotationRows = await sql<DomainRotationRow[]>`
+    INSERT INTO domain_rotations (domain_id, next_link_index)
+    VALUES (${domain.id}, 1)
+    ON CONFLICT (domain_id)
+    DO UPDATE SET
+      next_link_index = CASE
+        WHEN domain_rotations.next_link_index >= ${allLinks.length} THEN 1
+        ELSE domain_rotations.next_link_index + 1
+      END,
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING domain_id, next_link_index, updated_at
+  `;
 
-  const resolvedAssignedLink = assignedLink;
+  const nextLinkIndex = rotationRows[0]?.next_link_index || 1;
+  const selectedLink = allLinks[Math.max(0, Math.min(allLinks.length - 1, nextLinkIndex - 1))]!;
+
+  await sql`
+    INSERT INTO ip_assignments (domain_id, link_id, ip_address, country_code)
+    VALUES (${domain.id}, ${selectedLink.id}, ${clientIP}, ${countryCode})
+    ON CONFLICT (domain_id, ip_address)
+    DO UPDATE SET link_id = EXCLUDED.link_id, country_code = EXCLUDED.country_code
+  `;
 
   await writeAccessLog(sql, {
     domainId: domain.id,
-    linkId: resolvedAssignedLink.id,
+    linkId: selectedLink.id,
     ipAddress: clientIP,
     countryCode,
-    eventType,
+    eventType: "rotation_served",
     statusCode: 200,
-    detail,
+    detail: `Served order ${selectedLink.order_num} at rotation index ${nextLinkIndex}`,
   });
 
   if (responseMode === "http") {
-    return Response.redirect(resolvedAssignedLink.target_url, 302);
+    return Response.redirect(selectedLink.target_url, 302);
   }
 
   return jsonResponse({
-    url: resolvedAssignedLink.target_url,
-    order: resolvedAssignedLink.order_num,
-    message: "This IP is locked to this link",
+    url: selectedLink.target_url,
+    order: selectedLink.order_num,
+    message: "Redirecting to the next link",
   });
 }
 
