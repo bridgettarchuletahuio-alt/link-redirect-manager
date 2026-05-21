@@ -107,6 +107,28 @@ function normalizeHostToDomain(hostRaw: string): string {
   return hostRaw.split(":")[0].trim().toLowerCase();
 }
 
+function normalizeDomainInput(domainInput: string): string {
+  const trimmed = domainInput.trim().toLowerCase();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return normalizeHostToDomain(new URL(trimmed).hostname);
+    }
+
+    if (trimmed.startsWith("//")) {
+      return normalizeHostToDomain(new URL(`https:${trimmed}`).hostname);
+    }
+  } catch {
+    // Fall through to hostname-style parsing below.
+  }
+
+  return normalizeHostToDomain(trimmed.replace(/^https?:\/\//, ""));
+}
+
 async function getCountryFromIP(ip: string): Promise<string> {
   if (!ip || ip === "unknown" || ip === "127.0.0.1" || ip === "::1") {
     return "LOCAL";
@@ -225,11 +247,15 @@ async function initDB() {
 }
 
 async function resolveDomain(sql: SqlClient, domainName: string): Promise<DomainRow | null> {
-  const result = await sql`
-    SELECT * FROM domains WHERE domain_name = ${domainName}
-  `;
+  const normalizedTarget = normalizeDomainInput(domainName);
+  if (!normalizedTarget) {
+    return null;
+  }
 
-  return result[0] ?? null;
+  const result = await sql`SELECT * FROM domains ORDER BY created_at DESC`;
+  return (
+    result.find((row) => normalizeDomainInput(row.domain_name) === normalizedTarget) ?? null
+  );
 }
 
 async function writeAccessLog(
@@ -1615,7 +1641,7 @@ async function handleOverview(sql: SqlClient): Promise<Response> {
 
 async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Response> {
   const body = await parseJsonBody<{ domain_name?: string }>(req);
-  const domainName = body.domain_name?.trim().toLowerCase();
+  const domainName = normalizeDomainInput(body.domain_name || "");
 
   if (!domainName) {
     return jsonResponse({ error: "domain_name is required" }, 400);
