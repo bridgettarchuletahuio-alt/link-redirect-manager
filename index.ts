@@ -213,6 +213,39 @@ async function verifyCloudflareApiToken(): Promise<{
     return { valid: false, message: "CLOUDFLARE_API_TOKEN not set" };
   }
 
+  if (CLOUDFLARE_ZONE_ID) {
+    try {
+      const response = await fetch(
+        `${CLOUDFLARE_API_BASE}/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records?per_page=1`,
+        {
+          headers: {
+            Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const data = await response.json().catch(() => ({} as Record<string, unknown>));
+      const success = Boolean((data as { success?: boolean }).success);
+      const errorMessage = (data as { errors?: Array<{ message?: string }> }).errors?.[0]?.message;
+
+      if (response.ok && success) {
+        return {
+          valid: true,
+          message: "Token is active and has access to configured zone DNS",
+        };
+      }
+
+      return {
+        valid: false,
+        message: errorMessage || "Token cannot access configured zone DNS",
+      };
+    } catch (error) {
+      console.error("Cloudflare zone permission verify failed:", error);
+      return { valid: false, message: "Unable to verify token against configured zone" };
+    }
+  }
+
   try {
     const response = await fetch(`${CLOUDFLARE_API_BASE}/user/tokens/verify`, {
       headers: {
