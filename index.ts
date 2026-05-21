@@ -196,7 +196,7 @@ async function writeAccessLog(
 }
 
 function getAdminHTML(): string {
-  return decodeUnicodeEscapes(String.raw`
+  return `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -205,429 +205,588 @@ function getAdminHTML(): string {
   <title>Link Redirect Manager</title>
   <style>
     :root {
-      --bg: linear-gradient(135deg, #f4efe5 0%, #d9e4f5 100%);
-      --panel: rgba(255, 255, 255, 0.88);
-      --panel-strong: #ffffff;
-      --line: rgba(20, 35, 60, 0.12);
-      --text: #1d2636;
-      --muted: #59657c;
-      --accent: #0d7c66;
-      --accent-dark: #0a5a4b;
-      --danger: #b42318;
-      --warning: #b54708;
-      --shadow: 0 18px 60px rgba(28, 45, 78, 0.12);
+      --bg: radial-gradient(circle at 20% -20%, #172858 0%, #090d18 45%, #05070f 100%);
+      --panel: #0f1727;
+      --panel-soft: #121e33;
+      --line: rgba(118, 146, 214, 0.2);
+      --text: #e8edff;
+      --muted: #8fa0c9;
+      --primary: #3a66ff;
+      --primary-strong: #2147c8;
+      --green: #00c886;
+      --warn: #f4a63d;
+      --danger: #ff5f73;
+      --shadow: 0 18px 48px rgba(2, 7, 22, 0.55);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
-      color: var(--text);
       background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
     }
 
     .shell {
-      max-width: 1360px;
+      max-width: 1480px;
       margin: 0 auto;
-      padding: 32px 20px 56px;
+      padding: 22px;
+      display: grid;
+      gap: 18px;
     }
 
-    .hero {
-      display: grid;
-      gap: 16px;
-      padding: 28px;
-      background: linear-gradient(140deg, rgba(255,255,255,0.92), rgba(244,248,255,0.76));
-      border: 1px solid rgba(255,255,255,0.6);
-      border-radius: 28px;
+    .top {
+      background: linear-gradient(140deg, rgba(20, 32, 58, 0.92), rgba(9, 14, 28, 0.92));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
       box-shadow: var(--shadow);
-      backdrop-filter: blur(14px);
     }
 
-    .hero h1 {
-      margin: 0;
-      font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
-      font-size: clamp(34px, 6vw, 56px);
-      line-height: 0.95;
-      letter-spacing: -0.04em;
-    }
-
-    .hero p {
-      margin: 0;
-      max-width: 760px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.6;
-    }
-
-    .hero-grid {
-      display: grid;
+    .title-row {
+      display: flex;
+      justify-content: space-between;
       gap: 14px;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: -0.02em;
+    }
+
+    .desc {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .stat {
-      padding: 16px 18px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.7);
       border: 1px solid var(--line);
+      background: rgba(13, 20, 36, 0.75);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+
+    .stat p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .stat strong {
       display: block;
-      font-size: 28px;
-      font-family: "Space Grotesk", sans-serif;
+      margin-top: 4px;
+      font-size: 30px;
+      font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
     }
 
     .layout {
       display: grid;
-      gap: 20px;
-      grid-template-columns: 340px minmax(0, 1fr);
-      margin-top: 24px;
+      gap: 18px;
+      grid-template-columns: 320px minmax(0, 1fr);
+      align-items: start;
     }
 
     .panel {
-      background: var(--panel);
-      border: 1px solid rgba(255,255,255,0.68);
-      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(14, 23, 39, 0.9), rgba(9, 14, 27, 0.95));
+      border-radius: 16px;
+      padding: 14px;
       box-shadow: var(--shadow);
-      padding: 22px;
-      backdrop-filter: blur(12px);
     }
 
-    .panel h2,
-    .panel h3 {
-      margin: 0 0 14px;
-      font-family: "Space Grotesk", sans-serif;
-      letter-spacing: -0.02em;
+    .panel h2 {
+      margin: 0;
+      font-size: 16px;
     }
 
-    .stack {
-      display: grid;
-      gap: 12px;
+    .panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
     }
 
-    .field {
-      display: grid;
-      gap: 8px;
-    }
+    .stack { display: grid; gap: 12px; }
+
+    .field { display: grid; gap: 6px; }
 
     .field label {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--muted);
-      font-weight: 600;
     }
 
     input,
-    select,
-    textarea,
-    button {
+    button,
+    select {
       font: inherit;
     }
 
     input,
     select {
       width: 100%;
-      padding: 12px 14px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.9);
+      border: 1px solid rgba(127, 160, 255, 0.22);
+      background: rgba(8, 14, 28, 0.85);
       color: var(--text);
+      border-radius: 12px;
+      padding: 11px 12px;
+      outline: none;
     }
 
     button {
-      border: 0;
-      border-radius: 14px;
-      padding: 12px 16px;
+      border: 1px solid transparent;
+      border-radius: 12px;
       cursor: pointer;
-      transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+      padding: 10px 14px;
+      transition: all 120ms ease;
+      color: #e9efff;
     }
 
-    button:hover {
-      transform: translateY(-1px);
+    button:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      background: linear-gradient(120deg, var(--primary), var(--primary-strong));
+      box-shadow: 0 6px 20px rgba(58, 102, 255, 0.32);
     }
 
-    .primary {
-      background: var(--accent);
-      color: white;
-      font-weight: 700;
+    .btn-soft {
+      background: rgba(66, 95, 175, 0.25);
+      border-color: rgba(102, 130, 214, 0.35);
     }
 
-    .secondary {
-      background: rgba(13, 124, 102, 0.12);
-      color: var(--accent-dark);
-      font-weight: 700;
+    .btn-danger {
+      background: rgba(255, 95, 115, 0.14);
+      border-color: rgba(255, 95, 115, 0.4);
+      color: #ffc5cc;
     }
 
-    .danger {
-      background: rgba(180, 35, 24, 0.12);
-      color: var(--danger);
-      font-weight: 700;
-    }
-
-    .warning {
-      background: rgba(181, 71, 8, 0.12);
-      color: var(--warning);
-      font-weight: 700;
+    .btn-warning {
+      background: rgba(244, 166, 61, 0.14);
+      border-color: rgba(244, 166, 61, 0.4);
+      color: #ffd9a1;
     }
 
     .toolbar {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
       justify-content: space-between;
-      margin-bottom: 16px;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
-    .hint {
-      margin: 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .domain-list,
-    .card-grid,
-    .table-wrap {
+    .domain-list {
       display: grid;
-      gap: 12px;
+      gap: 10px;
+      max-height: 60vh;
+      overflow: auto;
+      padding-right: 2px;
     }
 
-    .domain-item,
-    .card-item {
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 14px 16px;
-      background: rgba(255,255,255,0.76);
+    .domain-card {
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 14px;
+      background: rgba(9, 15, 30, 0.84);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
     }
 
-    .domain-item.active {
-      border-color: rgba(13, 124, 102, 0.42);
-      background: rgba(13, 124, 102, 0.08);
+    .domain-card.active {
+      border-color: rgba(58, 102, 255, 0.78);
+      box-shadow: 0 0 0 1px rgba(58, 102, 255, 0.35) inset;
     }
 
-    .domain-head,
-    .row {
+    .domain-top {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
       align-items: center;
-    }
-
-    .domain-name,
-    .card-title {
-      margin: 0;
+      gap: 8px;
+      font-size: 14px;
       font-weight: 700;
     }
 
-    .meta {
+    .domain-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .main-stack { display: grid; gap: 14px; }
+
+    .hero {
+      padding: 16px;
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 16px;
+      background: linear-gradient(115deg, rgba(18, 30, 50, 0.9), rgba(7, 11, 22, 0.9));
+    }
+
+    .hero h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .hero .hint {
+      margin-top: 8px;
       color: var(--muted);
       font-size: 13px;
     }
 
-    .chip-list {
+    .hero-actions {
+      margin-top: 14px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tabs {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
     }
 
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.9);
-      font-size: 13px;
-      font-weight: 600;
+    .tab-btn {
+      background: rgba(66, 95, 175, 0.18);
+      border: 1px solid rgba(102, 130, 214, 0.26);
+      color: #c9d7ff;
+      padding: 9px 12px;
+      border-radius: 10px;
     }
 
-    .chip button {
-      padding: 0;
-      background: transparent;
-      color: var(--danger);
+    .tab-btn.active {
+      background: linear-gradient(120deg, var(--primary), var(--primary-strong));
+      border-color: transparent;
+      color: white;
+      box-shadow: 0 6px 18px rgba(58, 102, 255, 0.32);
     }
 
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-      overflow: hidden;
-      border-radius: 18px;
-      background: var(--panel-strong);
-      border: 1px solid var(--line);
-    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: grid; gap: 12px; }
 
-    .table th,
-    .table td {
-      text-align: left;
-      padding: 12px 14px;
-      border-bottom: 1px solid rgba(20, 35, 60, 0.08);
-      font-size: 14px;
-      vertical-align: top;
-    }
-
-    .table th {
-      color: var(--muted);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .message {
-      min-height: 22px;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .message.success {
-      color: var(--accent-dark);
-    }
-
-    .message.error {
-      color: var(--danger);
-    }
-
-    .empty {
-      padding: 22px;
-      border-radius: 18px;
-      border: 1px dashed var(--line);
-      color: var(--muted);
-      text-align: center;
-      background: rgba(255,255,255,0.56);
-    }
-
-    .grid-two {
+    .grid-2 {
       display: grid;
-      gap: 20px;
+      gap: 12px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .link-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .link-card {
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 14px;
+      background: rgba(9, 15, 30, 0.86);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
     }
 
     .mono {
       font-family: "IBM Plex Mono", monospace;
-      font-size: 13px;
+      font-size: 12px;
+      color: #b8c9ff;
+      word-break: break-all;
     }
 
-    @media (max-width: 1024px) {
-      .layout,
-      .grid-two {
-        grid-template-columns: 1fr;
-      }
+    .small { color: var(--muted); font-size: 12px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 11px;
+      border: 1px solid rgba(0, 200, 134, 0.32);
+      background: rgba(0, 200, 134, 0.12);
+      color: #8dffd8;
+    }
+
+    .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .chip {
+      border: 1px solid rgba(102, 130, 214, 0.3);
+      background: rgba(9, 15, 30, 0.86);
+      border-radius: 999px;
+      padding: 7px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .chip button {
+      background: transparent;
+      border: 0;
+      color: #ff9fae;
+      padding: 0;
+      min-width: 16px;
+    }
+
+    .table-wrap { overflow: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(9, 15, 30, 0.84);
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid rgba(118, 146, 214, 0.16);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(18, 29, 51, 0.92);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 20px;
+      border: 1px dashed rgba(102, 130, 214, 0.3);
+      border-radius: 12px;
+      color: var(--muted);
+      background: rgba(9, 15, 30, 0.68);
+    }
+
+    .message { min-height: 18px; font-size: 13px; }
+    .message.success { color: #8dffd8; }
+    .message.error { color: #ff9fae; }
+
+    .kpi-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .kpi {
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(9, 15, 30, 0.84);
+    }
+
+    .kpi p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .kpi strong {
+      margin-top: 6px;
+      display: block;
+      font-size: 30px;
+      font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+    }
+
+    .chart-box {
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 14px;
+      background: rgba(9, 15, 30, 0.9);
+      padding: 10px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 240px;
+      display: block;
+    }
+
+    .analytics-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .metric-box {
+      border: 1px solid rgba(102, 130, 214, 0.24);
+      border-radius: 12px;
+      background: rgba(9, 15, 30, 0.84);
+      padding: 10px;
+    }
+
+    .metric-title {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      padding: 4px 0;
+    }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+      .top-grid, .grid-2, .link-grid, .kpi-grid, .analytics-grid { grid-template-columns: 1fr; }
+      .domain-list { max-height: 360px; }
     }
   </style>
 </head>
 <body>
   <main class="shell">
-    <section class="hero">
-      <h1>Link Redirect Manager</h1>
-      <p>为每个域名维护独立的跳转池。新 IP 首次访问时随机分配目标链接，以后固定命中同一子链接；同时支持国家代码封禁、访问日志和分配记录查询。</p>
-      <div class="hero-grid">
-        <div class="stat"><span class="meta">域名数量</span><strong id="stat-domains">0</strong></div>
-        <div class="stat"><span class="meta">链接数量</span><strong id="stat-links">0</strong></div>
-        <div class="stat"><span class="meta">IP 分配数</span><strong id="stat-assignments">0</strong></div>
-        <div class="stat"><span class="meta">访问日志数</span><strong id="stat-logs">0</strong></div>
+    <section class="top">
+      <div class="title-row">
+        <div>
+          <h1>Link Redirect Manager</h1>
+          <p class="desc">深色看板 · 链接分发 · 地区限制 · 访问分析</p>
+        </div>
+        <button class="btn-soft" id="reload-domains-btn">刷新数据</button>
+      </div>
+      <div class="top-grid">
+        <div class="stat"><p>域名数量</p><strong id="stat-domains">0</strong></div>
+        <div class="stat"><p>链接数量</p><strong id="stat-links">0</strong></div>
+        <div class="stat"><p>IP 分配</p><strong id="stat-assignments">0</strong></div>
+        <div class="stat"><p>访问日志</p><strong id="stat-logs">0</strong></div>
       </div>
     </section>
 
     <section class="layout">
       <aside class="stack">
         <div class="panel stack">
-          <div>
+          <div class="toolbar">
             <h2>新建域名</h2>
-            <p class="hint">域名是独立管理单元。链接池、国家限制和分配记录都按域名隔离。</p>
           </div>
+          <p>创建成功后可自动跳转到 Cloudflare 授权页。</p>
           <div class="field">
             <label for="domain-name">域名</label>
             <input id="domain-name" placeholder="example.com">
           </div>
-          <button class="primary" id="create-domain-btn">创建域名</button>
+          <button class="btn-primary" id="create-domain-btn">创建并去授权</button>
           <div id="domain-message" class="message"></div>
         </div>
 
         <div class="panel stack">
           <div class="toolbar">
-            <h2>域名列表</h2>
-            <button class="secondary" id="reload-domains-btn">刷新</button>
+            <h2>项目列表</h2>
+            <button class="btn-soft" id="reload-links-btn">刷新</button>
           </div>
           <div id="domains-list" class="domain-list"></div>
         </div>
       </aside>
 
-      <section class="stack">
-        <div class="panel stack">
-          <div class="toolbar">
-            <div>
-              <h2 id="selected-domain-title">未选择域名</h2>
-              <p class="hint" id="selected-domain-hint">先创建或选择一个域名，再管理链接和地区限制。</p>
-            </div>
-            <div class="row">
-              <button class="secondary" id="copy-endpoint-btn">复制接口路径</button>
-              <button class="danger" id="delete-domain-btn">删除域名</button>
-            </div>
+      <section class="main-stack">
+        <div class="hero">
+          <h2 id="selected-domain-title">未选择域名</h2>
+          <p class="hint" id="selected-domain-hint">选择左侧域名后配置分发策略和访问限制。</p>
+          <div class="hero-actions">
+            <button class="btn-soft" id="copy-endpoint-btn">复制重定向入口</button>
+            <button class="btn-danger" id="delete-domain-btn">删除域名</button>
           </div>
-          <div class="grid-two">
+        </div>
+
+        <div class="tabs" id="tabs">
+          <button class="tab-btn active" data-tab="tab-links">链接池</button>
+          <button class="tab-btn" data-tab="tab-config">分发配置</button>
+          <button class="tab-btn" data-tab="tab-analytics">访问分析</button>
+          <button class="tab-btn" data-tab="tab-logs">访问日志</button>
+          <button class="tab-btn" data-tab="tab-assignments">IP 绑定</button>
+        </div>
+
+        <section id="tab-links" class="tab-panel active panel">
+          <div class="toolbar">
+            <h2>链接卡片</h2>
+          </div>
+          <div id="links-list" class="link-grid"></div>
+          <div id="link-message" class="message"></div>
+        </section>
+
+        <section id="tab-config" class="tab-panel panel">
+          <div class="grid-2">
             <div class="stack">
-              <h3>添加子链接</h3>
+              <h2>添加目标链接</h2>
               <div class="field">
                 <label for="link-order">顺序号</label>
                 <input id="link-order" type="number" min="1" placeholder="1">
               </div>
               <div class="field">
                 <label for="link-url">目标 URL</label>
-                <input id="link-url" type="url" placeholder="https://target.example/path">
+                <input id="link-url" type="url" placeholder="https://wa.me/xxxxxxxx?text=Start">
               </div>
-              <button class="primary" id="add-link-btn">添加链接</button>
-              <div id="link-message" class="message"></div>
+              <button class="btn-primary" id="add-link-btn">添加链接</button>
             </div>
             <div class="stack">
-              <h3>地区限制</h3>
+              <h2>地区限制</h2>
               <div class="field">
                 <label for="country-code">国家代码</label>
-                <input id="country-code" maxlength="16" placeholder="CN / US / HK">
+                <input id="country-code" maxlength="16" placeholder="CN / HK / US">
               </div>
-              <button class="warning" id="add-country-btn">添加封禁国家</button>
+              <button class="btn-warning" id="add-country-btn">添加封禁国家</button>
               <div id="country-message" class="message"></div>
               <div id="countries-list" class="chip-list"></div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div class="panel stack">
-          <div class="toolbar">
-            <div>
-              <h2>链接池</h2>
-              <p class="hint">同一个域名下首次命中的 IP 会随机绑定到其中一个目标链接。</p>
-            </div>
-            <button class="secondary" id="reload-links-btn">刷新链接</button>
+        <section id="tab-analytics" class="tab-panel panel">
+          <div class="kpi-grid">
+            <div class="kpi"><p>总点击量</p><strong id="kpi-total">0</strong></div>
+            <div class="kpi"><p>独立访客</p><strong id="kpi-unique">0</strong></div>
+            <div class="kpi"><p>访问率</p><strong id="kpi-rate">0%</strong></div>
           </div>
-          <div id="links-list" class="card-grid"></div>
-        </div>
-
-        <div class="panel stack">
-          <div class="toolbar">
-            <div>
-              <h2>IP 分配记录</h2>
-              <p class="hint">这里展示每个域名下 IP 到目标子链接的固定绑定。</p>
-            </div>
-            <button class="secondary" id="reload-assignments-btn">刷新记录</button>
+          <div class="chart-box">
+            <canvas id="trend-chart" width="1200" height="360"></canvas>
           </div>
-          <div id="assignments-table"></div>
-        </div>
-
-        <div class="panel stack">
-          <div class="toolbar">
-            <div>
-              <h2>访问日志</h2>
-              <p class="hint">记录允许访问、首次分配、复用绑定、国家拦截和域名不存在等事件。</p>
+          <div class="analytics-grid">
+            <div class="metric-box">
+              <p class="metric-title">访问地区</p>
+              <div id="metric-country"></div>
             </div>
-            <button class="secondary" id="reload-logs-btn">刷新日志</button>
+            <div class="metric-box">
+              <p class="metric-title">事件类型</p>
+              <div id="metric-event"></div>
+            </div>
+            <div class="metric-box">
+              <p class="metric-title">状态分布</p>
+              <div id="metric-status"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-logs" class="tab-panel panel">
+          <div class="toolbar">
+            <h2>访问日志</h2>
+            <button class="btn-soft" id="reload-logs-btn">刷新日志</button>
           </div>
           <div id="logs-table"></div>
-        </div>
+        </section>
+
+        <section id="tab-assignments" class="tab-panel panel">
+          <div class="toolbar">
+            <h2>IP 绑定记录</h2>
+            <button class="btn-soft" id="reload-assignments-btn">刷新记录</button>
+          </div>
+          <div id="assignments-table"></div>
+        </section>
       </section>
     </section>
   </main>
@@ -639,7 +798,11 @@ function getAdminHTML(): string {
       domains: [],
       selectedDomainId: null,
       selectedDomainName: '',
-      stats: { domains: 0, links: 0, assignments: 0, logs: 0 }
+      stats: { domains: 0, links: 0, assignments: 0, logs: 0 },
+      links: [],
+      assignments: [],
+      logs: [],
+      countries: []
     };
 
     function setMessage(id, text, type) {
@@ -652,7 +815,6 @@ function getAdminHTML(): string {
       if (state.selectedDomainId) {
         return true;
       }
-
       setMessage('link-message', '请先选择域名', 'error');
       setMessage('country-message', '请先选择域名', 'error');
       return false;
@@ -669,6 +831,15 @@ function getAdminHTML(): string {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function countBy(rows, keyFn) {
+      const map = new Map();
+      rows.forEach((row) => {
+        const key = keyFn(row);
+        map.set(key, (map.get(key) || 0) + 1);
+      });
+      return [...map.entries()].sort((a, b) => b[1] - a[1]);
     }
 
     async function api(path, options) {
@@ -690,6 +861,293 @@ function getAdminHTML(): string {
       document.getElementById('stat-links').textContent = String(stats.links || 0);
       document.getElementById('stat-assignments').textContent = String(stats.assignments || 0);
       document.getElementById('stat-logs').textContent = String(stats.logs || 0);
+    }
+
+    function renderDomains() {
+      const wrap = document.getElementById('domains-list');
+      if (!state.domains.length) {
+        wrap.innerHTML = '<div class="empty">还没有域名，先创建一个。</div>';
+        return;
+      }
+
+      wrap.innerHTML = state.domains.map((domain) => {
+        const active = domain.id === state.selectedDomainId ? ' active' : '';
+        return [
+          '<div class="domain-card' + active + '">',
+          '  <div class="domain-top">',
+          '    <span>' + escapeHtml(domain.domain_name) + '</span>',
+          '    <span class="badge">运行中</span>',
+          '  </div>',
+          '  <div class="domain-meta">链接 ' + domain.link_count + ' · 限制 ' + domain.blocked_country_count + ' · 绑定 ' + domain.assignment_count + '</div>',
+          '  <button class="btn-soft" data-domain-id="' + domain.id + '" data-domain-name="' + escapeHtml(domain.domain_name) + '">进入看板</button>',
+          '</div>'
+        ].join('');
+      }).join('');
+
+      wrap.querySelectorAll('[data-domain-id]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.selectedDomainId = Number(button.getAttribute('data-domain-id'));
+          state.selectedDomainName = button.getAttribute('data-domain-name') || '';
+          renderDomains();
+          renderSelectedDomain();
+          loadDomainData().catch((error) => setMessage('link-message', error.message, 'error'));
+        });
+      });
+    }
+
+    function renderSelectedDomain() {
+      const title = document.getElementById('selected-domain-title');
+      const hint = document.getElementById('selected-domain-hint');
+      if (!state.selectedDomainId) {
+        title.textContent = '未选择域名';
+        hint.textContent = '选择左侧域名后配置分发策略和访问限制。';
+        return;
+      }
+
+      title.textContent = state.selectedDomainName;
+      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该域名的重定向入口。';
+    }
+
+    function renderLinks(links) {
+      const wrap = document.getElementById('links-list');
+      if (!links.length) {
+        wrap.innerHTML = '<div class="empty">当前域名还没有目标链接。</div>';
+        return;
+      }
+
+      wrap.innerHTML = links.map((link) => [
+        '<div class="link-card">',
+        '  <div class="line">',
+        '    <strong>#' + link.order_num + '</strong>',
+        '    <button class="btn-danger" data-delete-link="' + link.id + '">删除</button>',
+        '  </div>',
+        '  <div class="mono">' + escapeHtml(link.target_url) + '</div>',
+        '  <div class="small">创建时间：' + formatDate(link.created_at) + '</div>',
+        '</div>'
+      ].join('')).join('');
+
+      wrap.querySelectorAll('[data-delete-link]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          if (!confirm('确定删除这个子链接吗？已有 IP 绑定和日志会级联删除。')) {
+            return;
+          }
+          try {
+            await api('/api/links/' + button.getAttribute('data-delete-link'), { method: 'DELETE' });
+            await loadOverview();
+          } catch (error) {
+            setMessage('link-message', error.message, 'error');
+          }
+        });
+      });
+    }
+
+    function renderCountries(countries) {
+      const wrap = document.getElementById('countries-list');
+      if (!countries.length) {
+        wrap.innerHTML = '<div class="empty">当前域名没有地区限制。</div>';
+        return;
+      }
+
+      wrap.innerHTML = countries.map((country) => [
+        '<span class="chip">',
+        '  ' + escapeHtml(country.country_code),
+        '  <button data-delete-country="' + escapeHtml(country.country_code) + '">×</button>',
+        '</span>'
+      ].join('')).join('');
+
+      wrap.querySelectorAll('[data-delete-country]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          try {
+            const countryCode = button.getAttribute('data-delete-country');
+            await api('/api/blocked-countries/' + encodeURIComponent(countryCode), {
+              method: 'DELETE',
+              headers: { 'X-Domain-Id': String(state.selectedDomainId) }
+            });
+            setMessage('country-message', '已删除国家限制', 'success');
+            await loadOverview();
+          } catch (error) {
+            setMessage('country-message', error.message, 'error');
+          }
+        });
+      });
+    }
+
+    function renderAssignments(assignments) {
+      const wrap = document.getElementById('assignments-table');
+      if (!assignments.length) {
+        wrap.innerHTML = '<div class="empty">当前域名暂无 IP 绑定记录。</div>';
+        return;
+      }
+
+      wrap.innerHTML = [
+        '<div class="table-wrap">',
+        '<table>',
+        '<thead><tr><th>IP</th><th>国家</th><th>顺序号</th><th>目标 URL</th><th>首次分配</th></tr></thead>',
+        '<tbody>',
+        assignments.map((item) => [
+          '<tr>',
+          '  <td class="mono">' + escapeHtml(item.ip_address) + '</td>',
+          '  <td>' + escapeHtml(item.country_code || 'unknown') + '</td>',
+          '  <td>#' + item.order_num + '</td>',
+          '  <td class="mono">' + escapeHtml(item.target_url) + '</td>',
+          '  <td>' + formatDate(item.assigned_at) + '</td>',
+          '</tr>'
+        ].join('')).join(''),
+        '</tbody></table></div>'
+      ].join('');
+    }
+
+    function renderLogs(logs) {
+      const wrap = document.getElementById('logs-table');
+      if (!logs.length) {
+        wrap.innerHTML = '<div class="empty">当前域名暂无访问日志。</div>';
+        return;
+      }
+
+      wrap.innerHTML = [
+        '<div class="table-wrap">',
+        '<table>',
+        '<thead><tr><th>时间</th><th>IP</th><th>国家</th><th>事件</th><th>状态</th><th>详情</th></tr></thead>',
+        '<tbody>',
+        logs.map((log) => [
+          '<tr>',
+          '  <td>' + formatDate(log.created_at) + '</td>',
+          '  <td class="mono">' + escapeHtml(log.ip_address) + '</td>',
+          '  <td>' + escapeHtml(log.country_code || 'unknown') + '</td>',
+          '  <td>' + escapeHtml(log.event_type) + '</td>',
+          '  <td>' + log.status_code + '</td>',
+          '  <td>' + escapeHtml(log.detail || '-') + '</td>',
+          '</tr>'
+        ].join('')).join(''),
+        '</tbody></table></div>'
+      ].join('');
+    }
+
+    function drawTrend(logs) {
+      const canvas = document.getElementById('trend-chart');
+      const ctx = canvas.getContext('2d');
+      const labels = [];
+      const counts = [];
+      const today = new Date();
+
+      for (let i = 6; i >= 0; i -= 1) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        labels.push(key.slice(5));
+        counts.push(0);
+      }
+
+      logs.forEach((log) => {
+        const key = new Date(log.created_at).toISOString().slice(0, 10);
+        const idx = labels.findIndex((value) => value === key.slice(5));
+        if (idx >= 0) {
+          counts[idx] += 1;
+        }
+      });
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = '#0b1222';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(148, 171, 235, 0.22)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i += 1) {
+        const y = 24 + i * ((h - 48) / 4);
+        ctx.beginPath();
+        ctx.moveTo(40, y);
+        ctx.lineTo(w - 20, y);
+        ctx.stroke();
+      }
+
+      const max = Math.max(...counts, 5);
+      const stepX = (w - 80) / (counts.length - 1 || 1);
+      ctx.strokeStyle = '#3a66ff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+
+      counts.forEach((v, i) => {
+        const x = 40 + i * stepX;
+        const y = h - 24 - (v / max) * (h - 58);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = '#9eb3ea';
+      ctx.font = '12px IBM Plex Sans';
+      labels.forEach((label, i) => {
+        const x = 40 + i * stepX - 12;
+        ctx.fillText(label, x, h - 6);
+      });
+    }
+
+    function renderMetricList(id, items) {
+      const wrap = document.getElementById(id);
+      if (!items.length) {
+        wrap.innerHTML = '<div class="small">暂无数据</div>';
+        return;
+      }
+
+      wrap.innerHTML = items.slice(0, 6).map((item) => {
+        return '<div class="metric-line"><span>' + escapeHtml(String(item[0])) + '</span><strong>' + item[1] + '</strong></div>';
+      }).join('');
+    }
+
+    function renderAnalytics() {
+      const logs = state.logs;
+      const uniqueIPs = new Set(logs.map((log) => log.ip_address)).size;
+      const total = logs.length;
+      const successCount = logs.filter((log) => Number(log.status_code) < 400).length;
+      const rate = total ? ((successCount / total) * 100).toFixed(1) : '0.0';
+
+      document.getElementById('kpi-total').textContent = String(total);
+      document.getElementById('kpi-unique').textContent = String(uniqueIPs);
+      document.getElementById('kpi-rate').textContent = rate + '%';
+
+      drawTrend(logs);
+      renderMetricList('metric-country', countBy(logs, (row) => row.country_code || 'unknown'));
+      renderMetricList('metric-event', countBy(logs, (row) => row.event_type || 'unknown'));
+      renderMetricList('metric-status', countBy(logs, (row) => row.status_code || 'unknown'));
+    }
+
+    async function loadDomainData() {
+      if (!state.selectedDomainId) {
+        state.links = [];
+        state.assignments = [];
+        state.logs = [];
+        state.countries = [];
+        renderLinks([]);
+        renderAssignments([]);
+        renderLogs([]);
+        renderCountries([]);
+        renderAnalytics();
+        return;
+      }
+
+      const [links, assignments, logs, countries] = await Promise.all([
+        api('/api/links?domain_id=' + state.selectedDomainId),
+        api('/api/assignments?domain_id=' + state.selectedDomainId),
+        api('/api/access-logs?domain_id=' + state.selectedDomainId),
+        api('/api/blocked-countries?domain_id=' + state.selectedDomainId)
+      ]);
+
+      state.links = links;
+      state.assignments = assignments;
+      state.logs = logs;
+      state.countries = countries;
+
+      renderLinks(links);
+      renderAssignments(assignments);
+      renderLogs(logs);
+      renderCountries(countries);
+      renderAnalytics();
     }
 
     async function loadOverview() {
@@ -714,219 +1172,18 @@ function getAdminHTML(): string {
 
       renderDomains();
       renderSelectedDomain();
-
-      if (state.selectedDomainId) {
-        await loadDomainData();
-      } else {
-        renderLinks([]);
-        renderAssignments([]);
-        renderLogs([]);
-        renderCountries([]);
-      }
+      await loadDomainData();
     }
 
-    function renderDomains() {
-      const wrap = document.getElementById('domains-list');
-
-      if (!state.domains.length) {
-        wrap.innerHTML = '<div class="empty">还没有域名，先创建一个。</div>';
-        return;
-      }
-
-      wrap.innerHTML = state.domains.map((domain) => {
-        const active = domain.id === state.selectedDomainId ? ' active' : '';
-        return [
-          '          <div class="domain-item' + active + '">',
-          '            <div class="domain-head">',
-          '              <button class="secondary" data-domain-id="' + domain.id + '" data-domain-name="' + escapeHtml(domain.domain_name) + '">' + escapeHtml(domain.domain_name) + '</button>',
-          '              <span class="meta">' + domain.link_count + ' 链接</span>',
-          '            </div>',
-          '            <div class="meta">' + domain.blocked_country_count + ' 个国家限制 · ' + domain.assignment_count + ' 个 IP 绑定</div>',
-          '          </div>'
-        ].join('\n');
-      }).join('');
-
-      wrap.querySelectorAll('[data-domain-id]').forEach((button) => {
-        button.addEventListener('click', () => {
-          state.selectedDomainId = Number(button.getAttribute('data-domain-id'));
-          state.selectedDomainName = button.getAttribute('data-domain-name') || '';
-          renderDomains();
-          renderSelectedDomain();
-          loadDomainData().catch((error) => {
-            setMessage('link-message', error.message, 'error');
-          });
-        });
+    document.getElementById('tabs').querySelectorAll('[data-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.getAttribute('data-tab');
+        document.querySelectorAll('.tab-btn').forEach((el) => el.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach((el) => el.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
       });
-    }
-
-    function renderSelectedDomain() {
-      const title = document.getElementById('selected-domain-title');
-      const hint = document.getElementById('selected-domain-hint');
-
-      if (!state.selectedDomainId) {
-        title.textContent = '未选择域名';
-        hint.textContent = '先创建或选择一个域名，再管理链接和地区限制。';
-        return;
-      }
-
-      title.textContent = state.selectedDomainName;
-      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该域名的重定向入口。';
-    }
-
-    async function loadDomainData() {
-      if (!state.selectedDomainId) {
-        return;
-      }
-
-      const [links, assignments, logs, countries] = await Promise.all([
-        api('/api/links?domain_id=' + state.selectedDomainId),
-        api('/api/assignments?domain_id=' + state.selectedDomainId),
-        api('/api/access-logs?domain_id=' + state.selectedDomainId),
-        api('/api/blocked-countries?domain_id=' + state.selectedDomainId)
-      ]);
-
-      renderLinks(links);
-      renderAssignments(assignments);
-      renderLogs(logs);
-      renderCountries(countries);
-    }
-
-    function renderLinks(links) {
-      const wrap = document.getElementById('links-list');
-      if (!links.length) {
-        wrap.innerHTML = '<div class="empty">当前域名还没有子链接。</div>';
-        return;
-      }
-
-      wrap.innerHTML = links.map((link) => [
-        '        <div class="card-item">',
-        '          <div class="row">',
-        '            <p class="card-title">#' + link.order_num + '</p>',
-        '            <button class="danger" data-delete-link="' + link.id + '">删除</button>',
-        '          </div>',
-        '          <p class="mono">' + escapeHtml(link.target_url) + '</p>',
-        '          <p class="meta">创建时间 ' + formatDate(link.created_at) + '</p>',
-        '        </div>'
-      ].join('\n')).join('');
-
-      wrap.querySelectorAll('[data-delete-link]').forEach((button) => {
-        button.addEventListener('click', async () => {
-          if (!confirm('确定删除这个子链接吗？已有的 IP 绑定和日志会被级联删除。')) {
-            return;
-          }
-
-          try {
-            await api('/api/links/' + button.getAttribute('data-delete-link'), { method: 'DELETE' });
-            await loadOverview();
-          } catch (error) {
-            setMessage('link-message', error.message, 'error');
-          }
-        });
-      });
-    }
-
-    function renderCountries(countries) {
-      const wrap = document.getElementById('countries-list');
-      if (!countries.length) {
-        wrap.innerHTML = '<div class="empty">当前域名没有地区限制。</div>';
-        return;
-      }
-
-      wrap.innerHTML = countries.map((country) => [
-        '        <span class="chip">',
-        '          ' + escapeHtml(country.country_code),
-        '          <button title="删除" data-delete-country="' + escapeHtml(country.country_code) + '">×</button>',
-        '        </span>'
-      ].join('\n')).join('');
-
-      wrap.querySelectorAll('[data-delete-country]').forEach((button) => {
-        button.addEventListener('click', async () => {
-          try {
-            const countryCode = button.getAttribute('data-delete-country');
-            await api('/api/blocked-countries/' + encodeURIComponent(countryCode), {
-              method: 'DELETE',
-              headers: { 'X-Domain-Id': String(state.selectedDomainId) }
-            });
-            setMessage('country-message', '已删除国家限制', 'success');
-            await loadOverview();
-          } catch (error) {
-            setMessage('country-message', error.message, 'error');
-          }
-        });
-      });
-    }
-
-    function renderAssignments(assignments) {
-      const wrap = document.getElementById('assignments-table');
-      if (!assignments.length) {
-        wrap.innerHTML = '<div class="empty">当前域名还没有 IP 分配记录。</div>';
-        return;
-      }
-
-      wrap.innerHTML = [
-        '        <div class="table-wrap">',
-        '          <table class="table">',
-        '            <thead>',
-        '              <tr>',
-        '                <th>IP</th>',
-        '                <th>国家</th>',
-        '                <th>绑定顺序号</th>',
-        '                <th>目标 URL</th>',
-        '                <th>首次分配时间</th>',
-        '              </tr>',
-        '            </thead>',
-        '            <tbody>',
-        assignments.map((item) => [
-          '                <tr>',
-          '                  <td class="mono">' + escapeHtml(item.ip_address) + '</td>',
-          '                  <td>' + escapeHtml(item.country_code || 'unknown') + '</td>',
-          '                  <td>#' + item.order_num + '</td>',
-          '                  <td class="mono">' + escapeHtml(item.target_url) + '</td>',
-          '                  <td>' + formatDate(item.assigned_at) + '</td>',
-          '                </tr>'
-        ].join('\n')).join(''),
-        '            </tbody>',
-        '          </table>',
-        '        </div>'
-      ].join('\n');
-    }
-
-    function renderLogs(logs) {
-      const wrap = document.getElementById('logs-table');
-      if (!logs.length) {
-        wrap.innerHTML = '<div class="empty">当前域名还没有访问日志。</div>';
-        return;
-      }
-
-      wrap.innerHTML = [
-        '        <div class="table-wrap">',
-        '          <table class="table">',
-        '            <thead>',
-        '              <tr>',
-        '                <th>时间</th>',
-        '                <th>IP</th>',
-        '                <th>国家</th>',
-        '                <th>事件</th>',
-        '                <th>状态</th>',
-        '                <th>详情</th>',
-        '              </tr>',
-        '            </thead>',
-        '            <tbody>',
-        logs.map((log) => [
-          '                <tr>',
-          '                  <td>' + formatDate(log.created_at) + '</td>',
-          '                  <td class="mono">' + escapeHtml(log.ip_address) + '</td>',
-          '                  <td>' + escapeHtml(log.country_code || 'unknown') + '</td>',
-          '                  <td>' + escapeHtml(log.event_type) + '</td>',
-          '                  <td>' + log.status_code + '</td>',
-          '                  <td>' + escapeHtml(log.detail || '-') + '</td>',
-          '                </tr>'
-        ].join('\n')).join(''),
-        '            </tbody>',
-        '          </table>',
-        '        </div>'
-      ].join('\n');
-    }
+    });
 
     document.getElementById('create-domain-btn').addEventListener('click', async () => {
       const input = document.getElementById('domain-name');
@@ -992,7 +1249,6 @@ function getAdminHTML(): string {
 
       const input = document.getElementById('country-code');
       const countryCode = input.value.trim();
-
       if (!countryCode) {
         setMessage('country-message', '请输入国家代码', 'error');
         return;
@@ -1017,7 +1273,7 @@ function getAdminHTML(): string {
         return;
       }
 
-      if (!confirm('删除域名会同时删除它的链接、分配记录、地区限制和访问日志，确定继续吗？')) {
+      if (!confirm('删除域名会删除其链接、分配记录、地区限制和访问日志，确定继续吗？')) {
         return;
       }
 
@@ -1041,7 +1297,7 @@ function getAdminHTML(): string {
       const endpoint = location.origin + '/api/redirect/' + state.selectedDomainName;
       try {
         await navigator.clipboard.writeText(endpoint);
-        setMessage('domain-message', '接口路径已复制', 'success');
+        setMessage('domain-message', '重定向入口已复制', 'success');
       } catch {
         setMessage('domain-message', endpoint, 'success');
       }
@@ -1057,7 +1313,7 @@ function getAdminHTML(): string {
     });
   </script>
 </body>
-</html>`);
+</html>`;
 }
 
 function parseJsonBody<T>(req: Request): Promise<T> {
