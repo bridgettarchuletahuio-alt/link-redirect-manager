@@ -74,6 +74,12 @@ function normalizeCountryCode(countryCode: string): string {
   return countryCode.trim().toUpperCase();
 }
 
+function decodeUnicodeEscapes(input: string): string {
+  return input.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+}
+
 async function initDB() {
   const dbUrl = Bun.env.DATABASE_URL;
   if (!dbUrl) {
@@ -189,7 +195,7 @@ async function writeAccessLog(
 }
 
 function getAdminHTML(): string {
-  return String.raw`
+  return decodeUnicodeEscapes(String.raw`
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1047,7 +1053,7 @@ function getAdminHTML(): string {
     });
   </script>
 </body>
-</html>`;
+</html>`);
 }
 
 function parseJsonBody<T>(req: Request): Promise<T> {
