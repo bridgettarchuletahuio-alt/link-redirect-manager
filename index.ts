@@ -869,7 +869,7 @@ function getAdminHTML(): string {
       <div class="title-row">
         <div>
           <h1>暴富的小张</h1>
-          <p class="desc">深色看板 · 链接分发 · 地区限制 · 访问分析</p>
+          <p class="desc">深色看板 · 链接分发 · 允许国家 · 访问分析</p>
         </div>
         <button class="btn-soft" id="reload-domains-btn">刷新数据</button>
       </div>
@@ -946,12 +946,12 @@ function getAdminHTML(): string {
               <button class="btn-primary" id="add-link-btn">添加链接</button>
             </div>
             <div class="stack">
-              <h2>地区限制</h2>
+              <h2>允许国家</h2>
               <div class="field">
                 <label for="country-code">国家/地区</label>
                 <select id="country-code"></select>
               </div>
-              <button class="btn-warning" id="add-country-btn">添加国家</button>
+              <button class="btn-warning" id="add-country-btn">添加允许国家</button>
               <div id="country-message" class="message"></div>
               <div id="countries-list" class="chip-list"></div>
             </div>
@@ -1184,7 +1184,7 @@ function getAdminHTML(): string {
     function renderCountries(countries) {
       const wrap = document.getElementById('countries-list');
       if (!countries.length) {
-        wrap.innerHTML = '<div class="empty">当前入口域名没有地区限制。</div>';
+        wrap.innerHTML = '<div class="empty">当前入口域名没有允许国家限制，默认全部国家都可访问。</div>';
         return;
       }
 
@@ -1203,7 +1203,7 @@ function getAdminHTML(): string {
               method: 'DELETE',
               headers: { 'X-Domain-Id': String(state.selectedDomainId) }
             });
-            setMessage('country-message', '已删除国家限制', 'success');
+            setMessage('country-message', '已删除允许国家', 'success');
             await loadOverview();
           } catch (error) {
             setMessage('country-message', error.message, 'error');
@@ -1502,7 +1502,7 @@ function getAdminHTML(): string {
           body: JSON.stringify({ domain_id: state.selectedDomainId, country_code: countryCode })
         });
         input.value = '';
-        setMessage('country-message', '国家限制已添加', 'success');
+        setMessage('country-message', '允许国家已添加', 'success');
         await loadOverview();
       } catch (error) {
         setMessage('country-message', error.message, 'error');
@@ -1515,7 +1515,7 @@ function getAdminHTML(): string {
         return;
       }
 
-      if (!confirm('删除入口域名会删除其链接、分配记录、地区限制和访问日志，确定继续吗？')) {
+      if (!confirm('删除入口域名会删除其链接、分配记录、允许国家和访问日志，确定继续吗？')) {
         return;
       }
 
@@ -1782,13 +1782,13 @@ async function handleCreateBlockedCountry(req: Request, sql: SqlClient): Promise
     `;
 
     if (!result[0]) {
-      return jsonResponse({ error: "Country is already blocked for this domain" }, 409);
+      return jsonResponse({ error: "Country is already allowed for this domain" }, 409);
     }
 
     return jsonResponse(result[0], 201);
   } catch (error) {
     console.error("Create blocked country error:", error);
-    return jsonResponse({ error: "Failed to add blocked country" }, 400);
+    return jsonResponse({ error: "Failed to add allowed country" }, 400);
   }
 }
 
@@ -1807,7 +1807,7 @@ async function handleDeleteBlockedCountry(req: Request, countryCodeRaw: string, 
   `;
 
   if (!result[0]) {
-    return jsonResponse({ error: "Blocked country not found" }, 404);
+    return jsonResponse({ error: "Allowed country not found" }, 404);
   }
 
   return jsonResponse({ success: true });
@@ -1853,22 +1853,26 @@ async function handleRedirect(
     return jsonResponse({ error: "Domain not found" }, 404);
   }
 
-  const blockedCountry = await sql`
-    SELECT id FROM blocked_countries
-    WHERE domain_id = ${domain.id} AND country_code = ${countryCode}
+  const allowedCountries = await sql`
+    SELECT country_code FROM blocked_countries
+    WHERE domain_id = ${domain.id}
   `;
 
-  if (blockedCountry[0]) {
-    await writeAccessLog(sql, {
-      domainId: domain.id,
-      ipAddress: clientIP,
-      countryCode,
-      eventType: "country_blocked",
-      statusCode: 403,
-      detail: `Blocked by country policy for ${countryCode}`,
-    });
+  if (allowedCountries.length > 0) {
+    const isAllowed = allowedCountries.some((row) => row.country_code === countryCode);
 
-    return jsonResponse({ error: "Access denied from your country" }, 403);
+    if (!isAllowed) {
+      await writeAccessLog(sql, {
+        domainId: domain.id,
+        ipAddress: clientIP,
+        countryCode,
+        eventType: "country_not_allowed",
+        statusCode: 403,
+        detail: `Blocked by allowlist policy for ${countryCode}`,
+      });
+
+      return jsonResponse({ error: "Access denied from your country" }, 403);
+    }
   }
 
   const existingAssignment = await sql`
