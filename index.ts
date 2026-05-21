@@ -1209,7 +1209,10 @@ function getAdminHTML(currentUsername: string): string {
           <h1>暴富的小张</h1>
           <p class="desc">深色看板 · 链接分发 · 允许国家 · 访问分析</p>
         </div>
-        <button class="btn-soft" id="reload-domains-btn">刷新数据</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-soft" id="switch-user-btn">切换用户</button>
+          <button class="btn-soft" id="reload-domains-btn">刷新数据</button>
+        </div>
       </div>
       <div class="top-grid">
         <div class="stat"><p>入口域名数量</p><strong id="stat-domains">0</strong></div>
@@ -1376,6 +1379,72 @@ function getAdminHTML(currentUsername: string): string {
       countries: []
     };
 
+    const authState = {
+      apiAuthHeader: '',
+      activeUser: CURRENT_USER || ''
+    };
+
+    function updateCurrentUserLabel() {
+      const descEl = document.querySelector('.desc');
+      if (!descEl) {
+        return;
+      }
+      const userPart = authState.activeUser ? ('当前账号：' + authState.activeUser + ' · ') : '';
+      descEl.textContent = userPart + '深色看板 · 链接分发 · 允许国家 · 访问分析';
+    }
+
+    function getMergedHeaders(extraHeaders) {
+      const merged = { ...(extraHeaders || {}) };
+      if (authState.apiAuthHeader) {
+        merged.Authorization = authState.apiAuthHeader;
+      }
+      return merged;
+    }
+
+    async function verifyCredentialsAndSwitch(username, password) {
+      const authHeader = 'Basic ' + btoa(username + ':' + password);
+      const res = await fetch('/api/version', {
+        headers: getMergedHeaders({ Authorization: authHeader })
+      });
+
+      if (!res.ok) {
+        throw new Error('账号或密码错误');
+      }
+
+      authState.apiAuthHeader = authHeader;
+      authState.activeUser = username;
+      sessionStorage.setItem('lrm.switchAuthHeader', authHeader);
+      sessionStorage.setItem('lrm.switchAuthUser', username);
+      updateCurrentUserLabel();
+    }
+
+    async function restoreSwitchedUserAuth() {
+      const savedAuthHeader = sessionStorage.getItem('lrm.switchAuthHeader') || '';
+      const savedUser = sessionStorage.getItem('lrm.switchAuthUser') || '';
+
+      if (!savedAuthHeader) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/version', {
+          headers: { Authorization: savedAuthHeader }
+        });
+
+        if (!res.ok) {
+          throw new Error('Saved credential invalid');
+        }
+
+        authState.apiAuthHeader = savedAuthHeader;
+        authState.activeUser = savedUser || CURRENT_USER || '';
+      } catch {
+        sessionStorage.removeItem('lrm.switchAuthHeader');
+        sessionStorage.removeItem('lrm.switchAuthUser');
+        authState.apiAuthHeader = '';
+        authState.activeUser = CURRENT_USER || '';
+      }
+    }
+
     function setMessage(id, text, type) {
       const el = document.getElementById(id);
       el.textContent = text || '';
@@ -1449,7 +1518,7 @@ function getAdminHTML(currentUsername: string): string {
 
     async function api(path, options) {
       const res = await fetch(path, {
-        headers: { 'Content-Type': 'application/json', ...(options && options.headers ? options.headers : {}) },
+        headers: getMergedHeaders({ 'Content-Type': 'application/json', ...(options && options.headers ? options.headers : {}) }),
         ...options
       });
 
@@ -2030,11 +2099,28 @@ function getAdminHTML(currentUsername: string): string {
     document.getElementById('reload-logs-btn').addEventListener('click', () => loadDomainData().catch((error) => setMessage('link-message', error.message, 'error')));
 
     renderCountryPicker();
+    updateCurrentUserLabel();
 
-    const descEl = document.querySelector('.desc');
-    if (descEl && CURRENT_USER) {
-      descEl.textContent = '当前账号：' + CURRENT_USER + ' · 深色看板 · 链接分发 · 允许国家 · 访问分析';
-    }
+    document.getElementById('switch-user-btn').addEventListener('click', async () => {
+      const username = (prompt('请输入要切换的用户名', authState.activeUser || 'admin') || '').trim();
+      if (!username) {
+        return;
+      }
+
+      const password = prompt('请输入该用户密码') || '';
+      if (!password) {
+        setMessage('domain-message', '未输入密码，已取消切换', 'error');
+        return;
+      }
+
+      try {
+        await verifyCredentialsAndSwitch(username, password);
+        setMessage('domain-message', '已切换到用户 ' + username, 'success');
+        await loadOverview();
+      } catch (error) {
+        setMessage('domain-message', error.message, 'error');
+      }
+    });
 
     document.getElementById('link-range').addEventListener('change', (event) => {
       const target = event.target;
@@ -2048,9 +2134,11 @@ function getAdminHTML(currentUsername: string): string {
       renderLinkDayTrendPanel();
     });
 
-    loadOverview().catch((error) => {
-      setMessage('domain-message', error.message, 'error');
-    });
+    restoreSwitchedUserAuth()
+      .then(() => loadOverview())
+      .catch((error) => {
+        setMessage('domain-message', error.message, 'error');
+      });
 
   </script>
 </body>
