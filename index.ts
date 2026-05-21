@@ -19,7 +19,13 @@ const PORT = Number(Bun.env.PORT || 8000);
 const HAS_DATABASE_URL = Boolean(Bun.env.DATABASE_URL);
 const CLOUDFLARE_API_TOKEN = Bun.env.CLOUDFLARE_API_TOKEN || "";
 const CLOUDFLARE_API_BASE = Bun.env.CLOUDFLARE_API_BASE || "https://api.cloudflare.com/client/v4";
+const CLOUDFLARE_ZONE_ID = Bun.env.CLOUDFLARE_ZONE_ID || "";
+const CLOUDFLARE_DNS_TARGET = Bun.env.CLOUDFLARE_DNS_TARGET || "";
+const CLOUDFLARE_DNS_PROXIED = (Bun.env.CLOUDFLARE_DNS_PROXIED || "true").toLowerCase() === "true";
 const CLOUDFLARE_TOKEN_CONFIGURED = Boolean(CLOUDFLARE_API_TOKEN);
+const CLOUDFLARE_AUTO_DNS_ENABLED = Boolean(
+  CLOUDFLARE_API_TOKEN && CLOUDFLARE_ZONE_ID && CLOUDFLARE_DNS_TARGET
+);
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -244,7 +250,78 @@ async function handleCloudflareTokenStatus(): Promise<Response> {
     message: verified.message,
     expiresOn: verified.expiresOn ?? null,
     notBefore: verified.notBefore ?? null,
+    autoDnsEnabled: CLOUDFLARE_AUTO_DNS_ENABLED,
+    zoneIdConfigured: Boolean(CLOUDFLARE_ZONE_ID),
+    dnsTargetConfigured: Boolean(CLOUDFLARE_DNS_TARGET),
+    dnsTarget: CLOUDFLARE_DNS_TARGET || null,
   });
+}
+
+async function cloudflareApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${CLOUDFLARE_API_BASE}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+
+  const data = await response.json().catch(() => ({} as Record<string, unknown>));
+  const payload = data as {
+    success?: boolean;
+    errors?: Array<{ message?: string }>;
+  };
+
+  if (!response.ok || !payload.success) {
+    const message = payload.errors?.[0]?.message || `Cloudflare API request failed: ${path}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+async function syncCloudflareCnameRecord(domainName: string): Promise<{ synced: boolean; message: string }> {
+  if (!CLOUDFLARE_AUTO_DNS_ENABLED) {
+    return {
+      synced: false,
+      message: "Auto DNS sync skipped (missing CLOUDFLARE_ZONE_ID or CLOUDFLARE_DNS_TARGET)",
+    };
+  }
+
+  type CloudflareDnsRecord = { id: string };
+  type CloudflareListResponse = { result: CloudflareDnsRecord[] };
+
+  const list = await cloudflareApiRequest<CloudflareListResponse>(
+    `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records?type=CNAME&name=${encodeURIComponent(domainName)}&per_page=1`
+  );
+
+  const body = JSON.stringify({
+    type: "CNAME",
+    name: domainName,
+    content: CLOUDFLARE_DNS_TARGET,
+    proxied: CLOUDFLARE_DNS_PROXIED,
+    ttl: 1,
+  });
+
+  if (list.result?.[0]?.id) {
+    await cloudflareApiRequest(
+      `/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records/${encodeURIComponent(list.result[0].id)}`,
+      {
+        method: "PUT",
+        body,
+      }
+    );
+
+    return { synced: true, message: "Cloudflare DNS record updated" };
+  }
+
+  await cloudflareApiRequest(`/zones/${encodeURIComponent(CLOUDFLARE_ZONE_ID)}/dns_records`, {
+    method: "POST",
+    body,
+  });
+
+  return { synced: true, message: "Cloudflare DNS record created" };
 }
 
 function getAdminHTML(): string {
@@ -1268,7 +1345,8 @@ function getAdminHTML(): string {
         input.value = '';
         state.selectedDomainId = domain.id;
         state.selectedDomainName = domain.domain_name;
-        setMessage('domain-message', '入口域名已创建', 'success');
+        const dnsSuffix = domain.dns_message ? ('，' + domain.dns_message) : '';
+        setMessage('domain-message', '入口域名已创建' + dnsSuffix, domain.dns_synced ? 'success' : '');
         await loadOverview();
       } catch (error) {
         setMessage('domain-message', error.message, 'error');
@@ -1440,7 +1518,27 @@ async function handleCreateDomain(req: Request, sql: SqlClient): Promise<Respons
     return jsonResponse({ error: "Domain already exists" }, 409);
   }
 
-  return jsonResponse(result[0], 201);
+  let dnsSynced = false;
+  let dnsMessage = "Auto DNS disabled";
+
+  try {
+    const dnsResult = await syncCloudflareCnameRecord(domainName);
+    dnsSynced = dnsResult.synced;
+    dnsMessage = dnsResult.message;
+  } catch (error) {
+    await sql`
+      DELETE FROM domains WHERE id = ${result[0].id}
+    `;
+
+    const message = error instanceof Error ? error.message : "Cloudflare DNS sync failed";
+    return jsonResponse({ error: `Domain creation rolled back: ${message}` }, 502);
+  }
+
+  return jsonResponse({
+    ...result[0],
+    dns_synced: dnsSynced,
+    dns_message: dnsMessage,
+  }, 201);
 }
 
 async function handleDeleteDomain(domainId: number, sql: SqlClient): Promise<Response> {
