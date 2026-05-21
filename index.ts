@@ -1538,6 +1538,7 @@ async function handleRequest(req: Request): Promise<Response> {
 }
 
 Bun.serve({
+  hostname: "0.0.0.0",
   port: PORT,
   fetch: handleRequest,
 });
