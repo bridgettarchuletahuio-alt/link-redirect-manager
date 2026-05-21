@@ -927,7 +927,7 @@ function getAdminHTML(): string {
           <div class="toolbar">
             <h2>新建入口域名</h2>
           </div>
-          <p>用于合并多个链接的统一入口域名。创建前会校验 Cloudflare API Token。</p>
+          <p>用于子链接跳转的统一入口域名。用户访问该域名时直接进入分配逻辑，不展示前端首页。创建前会校验 Cloudflare API Token。</p>
           <div class="field">
             <label for="domain-name">入口域名</label>
             <input id="domain-name" placeholder="go.example.com">
@@ -1185,7 +1185,7 @@ function getAdminHTML(): string {
       }
 
       title.textContent = state.selectedDomainName;
-      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该入口域名的重定向入口。';
+      hint.textContent = '/api/redirect/' + state.selectedDomainName + ' 是该入口域名的跳转入口，最终会直接跳到子链接。';
     }
 
     function renderLinks(links) {
