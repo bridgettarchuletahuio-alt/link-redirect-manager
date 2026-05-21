@@ -16,6 +16,7 @@ type LinkRow = {
 };
 
 const PORT = Number(Bun.env.PORT || 3000);
+const HAS_DATABASE_URL = Boolean(Bun.env.DATABASE_URL);
 const APP_VERSION =
   Bun.env.RAILWAY_GIT_COMMIT_SHA ||
   Bun.env.VERCEL_GIT_COMMIT_SHA ||
@@ -1410,6 +1411,10 @@ async function handleRedirect(
 }
 
 async function tryDomainHostRedirect(path: string, req: Request, sql: SqlClient): Promise<Response | null> {
+  if (!HAS_DATABASE_URL) {
+    return null;
+  }
+
   if (path.startsWith("/api")) {
     return null;
   }
@@ -1419,12 +1424,17 @@ async function tryDomainHostRedirect(path: string, req: Request, sql: SqlClient)
     return null;
   }
 
-  const domain = await resolveDomain(sql, host);
-  if (!domain) {
+  try {
+    const domain = await resolveDomain(sql, host);
+    if (!domain) {
+      return null;
+    }
+
+    return handleRedirect(host, req, sql, "http");
+  } catch (error) {
+    console.error("Host redirect lookup failed:", error);
     return null;
   }
-
-  return handleRedirect(host, req, sql, "http");
 }
 
 await initDB();
@@ -1436,6 +1446,14 @@ async function handleRequest(req: Request): Promise<Response> {
   const sql = Bun.sql;
 
   try {
+    if (path === "/healthz" && method === "GET") {
+      return jsonResponse({
+        ok: true,
+        version: APP_VERSION,
+        databaseConfigured: HAS_DATABASE_URL,
+      });
+    }
+
     const hostRedirect = await tryDomainHostRedirect(path, req, sql);
     if (hostRedirect) {
       return hostRedirect;

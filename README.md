@@ -43,6 +43,8 @@ bun run dev
 - GET /api/assignments?domain_id=:id：查看 IP 固定分配记录
 - GET /api/access-logs?domain_id=:id：查看访问日志
 - GET /api/redirect/:domainName：执行 IP 锁定重定向解析
+- GET /api/version：查看当前运行版本（用于确认部署是否最新）
+- GET /healthz：健康检查（不依赖数据库，可用于平台健康探针）
 
 另外，服务现在支持“按访问 Host 自动重定向”：
 
