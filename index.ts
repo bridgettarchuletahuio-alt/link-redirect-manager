@@ -719,15 +719,15 @@ function getAdminHTML(): string {
 
       wrap.innerHTML = state.domains.map((domain) => {
         const active = domain.id === state.selectedDomainId ? ' active' : '';
-        return `
-          <div class="domain-item${active}">
-            <div class="domain-head">
-              <button class="secondary" data-domain-id="${domain.id}" data-domain-name="${escapeHtml(domain.domain_name)}">${escapeHtml(domain.domain_name)}</button>
-              <span class="meta">${domain.link_count} 链接</span>
-            </div>
-            <div class="meta">${domain.blocked_country_count} 个国家限制 · ${domain.assignment_count} 个 IP 绑定</div>
-          </div>
-        `;
+        return [
+          '          <div class="domain-item' + active + '">',
+          '            <div class="domain-head">',
+          '              <button class="secondary" data-domain-id="' + domain.id + '" data-domain-name="' + escapeHtml(domain.domain_name) + '">' + escapeHtml(domain.domain_name) + '</button>',
+          '              <span class="meta">' + domain.link_count + ' 链接</span>',
+          '            </div>',
+          '            <div class="meta">' + domain.blocked_country_count + ' 个国家限制 · ' + domain.assignment_count + ' 个 IP 绑定</div>',
+          '          </div>'
+        ].join('\n');
       }).join('');
 
       wrap.querySelectorAll('[data-domain-id]').forEach((button) => {
@@ -782,16 +782,16 @@ function getAdminHTML(): string {
         return;
       }
 
-      wrap.innerHTML = links.map((link) => `
-        <div class="card-item">
-          <div class="row">
-            <p class="card-title">#${link.order_num}</p>
-            <button class="danger" data-delete-link="${link.id}">删除</button>
-          </div>
-          <p class="mono">${escapeHtml(link.target_url)}</p>
-          <p class="meta">创建时间 ${formatDate(link.created_at)}</p>
-        </div>
-      `).join('');
+      wrap.innerHTML = links.map((link) => [
+        '        <div class="card-item">',
+        '          <div class="row">',
+        '            <p class="card-title">#' + link.order_num + '</p>',
+        '            <button class="danger" data-delete-link="' + link.id + '">删除</button>',
+        '          </div>',
+        '          <p class="mono">' + escapeHtml(link.target_url) + '</p>',
+        '          <p class="meta">创建时间 ' + formatDate(link.created_at) + '</p>',
+        '        </div>'
+      ].join('\n')).join('');
 
       wrap.querySelectorAll('[data-delete-link]').forEach((button) => {
         button.addEventListener('click', async () => {
@@ -816,12 +816,12 @@ function getAdminHTML(): string {
         return;
       }
 
-      wrap.innerHTML = countries.map((country) => `
-        <span class="chip">
-          ${escapeHtml(country.country_code)}
-          <button title="删除" data-delete-country="${escapeHtml(country.country_code)}">×</button>
-        </span>
-      `).join('');
+      wrap.innerHTML = countries.map((country) => [
+        '        <span class="chip">',
+        '          ' + escapeHtml(country.country_code),
+        '          <button title="删除" data-delete-country="' + escapeHtml(country.country_code) + '">×</button>',
+        '        </span>'
+      ].join('\n')).join('');
 
       wrap.querySelectorAll('[data-delete-country]').forEach((button) => {
         button.addEventListener('click', async () => {
@@ -847,32 +847,32 @@ function getAdminHTML(): string {
         return;
       }
 
-      wrap.innerHTML = `
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>IP</th>
-                <th>国家</th>
-                <th>绑定顺序号</th>
-                <th>目标 URL</th>
-                <th>首次分配时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${assignments.map((item) => `
-                <tr>
-                  <td class="mono">${escapeHtml(item.ip_address)}</td>
-                  <td>${escapeHtml(item.country_code || 'unknown')}</td>
-                  <td>#${item.order_num}</td>
-                  <td class="mono">${escapeHtml(item.target_url)}</td>
-                  <td>${formatDate(item.assigned_at)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
+      wrap.innerHTML = [
+        '        <div class="table-wrap">',
+        '          <table class="table">',
+        '            <thead>',
+        '              <tr>',
+        '                <th>IP</th>',
+        '                <th>国家</th>',
+        '                <th>绑定顺序号</th>',
+        '                <th>目标 URL</th>',
+        '                <th>首次分配时间</th>',
+        '              </tr>',
+        '            </thead>',
+        '            <tbody>',
+        assignments.map((item) => [
+          '                <tr>',
+          '                  <td class="mono">' + escapeHtml(item.ip_address) + '</td>',
+          '                  <td>' + escapeHtml(item.country_code || 'unknown') + '</td>',
+          '                  <td>#' + item.order_num + '</td>',
+          '                  <td class="mono">' + escapeHtml(item.target_url) + '</td>',
+          '                  <td>' + formatDate(item.assigned_at) + '</td>',
+          '                </tr>'
+        ].join('\n')).join(''),
+        '            </tbody>',
+        '          </table>',
+        '        </div>'
+      ].join('\n');
     }
 
     function renderLogs(logs) {
@@ -882,34 +882,34 @@ function getAdminHTML(): string {
         return;
       }
 
-      wrap.innerHTML = `
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>IP</th>
-                <th>国家</th>
-                <th>事件</th>
-                <th>状态</th>
-                <th>详情</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${logs.map((log) => `
-                <tr>
-                  <td>${formatDate(log.created_at)}</td>
-                  <td class="mono">${escapeHtml(log.ip_address)}</td>
-                  <td>${escapeHtml(log.country_code || 'unknown')}</td>
-                  <td>${escapeHtml(log.event_type)}</td>
-                  <td>${log.status_code}</td>
-                  <td>${escapeHtml(log.detail || '-')}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
+      wrap.innerHTML = [
+        '        <div class="table-wrap">',
+        '          <table class="table">',
+        '            <thead>',
+        '              <tr>',
+        '                <th>时间</th>',
+        '                <th>IP</th>',
+        '                <th>国家</th>',
+        '                <th>事件</th>',
+        '                <th>状态</th>',
+        '                <th>详情</th>',
+        '              </tr>',
+        '            </thead>',
+        '            <tbody>',
+        logs.map((log) => [
+          '                <tr>',
+          '                  <td>' + formatDate(log.created_at) + '</td>',
+          '                  <td class="mono">' + escapeHtml(log.ip_address) + '</td>',
+          '                  <td>' + escapeHtml(log.country_code || 'unknown') + '</td>',
+          '                  <td>' + escapeHtml(log.event_type) + '</td>',
+          '                  <td>' + log.status_code + '</td>',
+          '                  <td>' + escapeHtml(log.detail || '-') + '</td>',
+          '                </tr>'
+        ].join('\n')).join(''),
+        '            </tbody>',
+        '          </table>',
+        '        </div>'
+      ].join('\n');
     }
 
     document.getElementById('create-domain-btn').addEventListener('click', async () => {
