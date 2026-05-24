@@ -59,7 +59,9 @@ const COUNTRY_OPTIONS = [
   { code: "PL", name: "波兰" },
   { code: "TR", name: "土耳其" },
   { code: "SA", name: "沙特阿拉伯" },
+  { code: "SV", name: "萨尔瓦多" },
   { code: "AE", name: "阿联酋" },
+  { code: "PA", name: "巴拿马" },
   { code: "ZA", name: "南非" },
 ] as const;
 
