@@ -26,43 +26,201 @@ type DomainRotationRow = {
 };
 
 const COUNTRY_OPTIONS = [
-  { code: "US", name: "美国" },
-  { code: "JP", name: "日本" },
-  { code: "TW", name: "台湾" },
-  { code: "HK", name: "香港" },
-  { code: "MO", name: "澳门" },
-  { code: "SG", name: "新加坡" },
-  { code: "TH", name: "泰国" },
-  { code: "VN", name: "越南" },
-  { code: "MY", name: "马来西亚" },
-  { code: "CN", name: "中国大陆" },
-  { code: "KR", name: "韩国" },
-  { code: "GB", name: "英国" },
-  { code: "CA", name: "加拿大" },
+  { code: "AF", name: "阿富汗" },
+  { code: "AL", name: "阿尔巴尼亚" },
+  { code: "DZ", name: "阿尔及利亚" },
+  { code: "AD", name: "安道尔" },
+  { code: "AO", name: "安哥拉" },
+  { code: "AG", name: "安提瓜和巴布达" },
+  { code: "AR", name: "阿根廷" },
+  { code: "AM", name: "亚美尼亚" },
   { code: "AU", name: "澳大利亚" },
-  { code: "NZ", name: "新西兰" },
-  { code: "DE", name: "德国" },
-  { code: "FR", name: "法国" },
-  { code: "IN", name: "印度" },
+  { code: "AT", name: "奥地利" },
+  { code: "AZ", name: "阿塞拜疆" },
+  { code: "BS", name: "巴哈马" },
+  { code: "BH", name: "巴林" },
+  { code: "BD", name: "孟加拉国" },
+  { code: "BB", name: "巴巴多斯" },
+  { code: "BY", name: "白俄罗斯" },
+  { code: "BE", name: "比利时" },
+  { code: "BZ", name: "伯利兹" },
+  { code: "BJ", name: "贝宁" },
+  { code: "BT", name: "不丹" },
+  { code: "BO", name: "玻利维亚" },
+  { code: "BA", name: "波黑" },
+  { code: "BW", name: "博茨瓦纳" },
   { code: "BR", name: "巴西" },
-  { code: "RU", name: "俄罗斯" },
-  { code: "PH", name: "菲律宾" },
-  { code: "ID", name: "印度尼西亚" },
-  { code: "MX", name: "墨西哥" },
-  { code: "IT", name: "意大利" },
-  { code: "ES", name: "西班牙" },
-  { code: "NL", name: "荷兰" },
-  { code: "SE", name: "瑞典" },
-  { code: "NO", name: "挪威" },
+  { code: "BN", name: "文莱" },
+  { code: "BG", name: "保加利亚" },
+  { code: "BF", name: "布基纳法索" },
+  { code: "BI", name: "布隆迪" },
+  { code: "CV", name: "佛得角" },
+  { code: "KH", name: "柬埔寨" },
+  { code: "CM", name: "喀麦隆" },
+  { code: "CA", name: "加拿大" },
+  { code: "CF", name: "中非" },
+  { code: "TD", name: "乍得" },
+  { code: "CL", name: "智利" },
+  { code: "CN", name: "中国" },
+  { code: "CO", name: "哥伦比亚" },
+  { code: "KM", name: "科摩罗" },
+  { code: "CG", name: "刚果（布）" },
+  { code: "CD", name: "刚果（金）" },
+  { code: "CR", name: "哥斯达黎加" },
+  { code: "CI", name: "科特迪瓦" },
+  { code: "HR", name: "克罗地亚" },
+  { code: "CU", name: "古巴" },
+  { code: "CY", name: "塞浦路斯" },
+  { code: "CZ", name: "捷克" },
   { code: "DK", name: "丹麦" },
-  { code: "FI", name: "芬兰" },
-  { code: "PL", name: "波兰" },
-  { code: "TR", name: "土耳其" },
-  { code: "SA", name: "沙特阿拉伯" },
+  { code: "DJ", name: "吉布提" },
+  { code: "DM", name: "多米尼克" },
+  { code: "DO", name: "多米尼加" },
+  { code: "EC", name: "厄瓜多尔" },
+  { code: "EG", name: "埃及" },
   { code: "SV", name: "萨尔瓦多" },
-  { code: "AE", name: "阿联酋" },
+  { code: "GQ", name: "赤道几内亚" },
+  { code: "ER", name: "厄立特里亚" },
+  { code: "EE", name: "爱沙尼亚" },
+  { code: "SZ", name: "斯威士兰" },
+  { code: "ET", name: "埃塞俄比亚" },
+  { code: "FJ", name: "斐济" },
+  { code: "FI", name: "芬兰" },
+  { code: "FR", name: "法国" },
+  { code: "GA", name: "加蓬" },
+  { code: "GM", name: "冈比亚" },
+  { code: "GE", name: "格鲁吉亚" },
+  { code: "DE", name: "德国" },
+  { code: "GH", name: "加纳" },
+  { code: "GR", name: "希腊" },
+  { code: "GD", name: "格林纳达" },
+  { code: "GT", name: "危地马拉" },
+  { code: "GN", name: "几内亚" },
+  { code: "GW", name: "几内亚比绍" },
+  { code: "GY", name: "圭亚那" },
+  { code: "HT", name: "海地" },
+  { code: "HN", name: "洪都拉斯" },
+  { code: "HU", name: "匈牙利" },
+  { code: "IS", name: "冰岛" },
+  { code: "IN", name: "印度" },
+  { code: "ID", name: "印度尼西亚" },
+  { code: "IR", name: "伊朗" },
+  { code: "IQ", name: "伊拉克" },
+  { code: "IE", name: "爱尔兰" },
+  { code: "IL", name: "以色列" },
+  { code: "IT", name: "意大利" },
+  { code: "JM", name: "牙买加" },
+  { code: "JP", name: "日本" },
+  { code: "JO", name: "约旦" },
+  { code: "KZ", name: "哈萨克斯坦" },
+  { code: "KE", name: "肯尼亚" },
+  { code: "KI", name: "基里巴斯" },
+  { code: "KP", name: "朝鲜" },
+  { code: "KR", name: "韩国" },
+  { code: "KW", name: "科威特" },
+  { code: "KG", name: "吉尔吉斯斯坦" },
+  { code: "LA", name: "老挝" },
+  { code: "LV", name: "拉脱维亚" },
+  { code: "LB", name: "黎巴嫩" },
+  { code: "LS", name: "莱索托" },
+  { code: "LR", name: "利比里亚" },
+  { code: "LY", name: "利比亚" },
+  { code: "LI", name: "列支敦士登" },
+  { code: "LT", name: "立陶宛" },
+  { code: "LU", name: "卢森堡" },
+  { code: "MG", name: "马达加斯加" },
+  { code: "MW", name: "马拉维" },
+  { code: "MY", name: "马来西亚" },
+  { code: "MV", name: "马尔代夫" },
+  { code: "ML", name: "马里" },
+  { code: "MT", name: "马耳他" },
+  { code: "MH", name: "马绍尔群岛" },
+  { code: "MR", name: "毛里塔尼亚" },
+  { code: "MU", name: "毛里求斯" },
+  { code: "MX", name: "墨西哥" },
+  { code: "FM", name: "密克罗尼西亚" },
+  { code: "MD", name: "摩尔多瓦" },
+  { code: "MC", name: "摩纳哥" },
+  { code: "MN", name: "蒙古" },
+  { code: "ME", name: "黑山" },
+  { code: "MA", name: "摩洛哥" },
+  { code: "MZ", name: "莫桑比克" },
+  { code: "MM", name: "缅甸" },
+  { code: "NA", name: "纳米比亚" },
+  { code: "NR", name: "瑙鲁" },
+  { code: "NP", name: "尼泊尔" },
+  { code: "NL", name: "荷兰" },
+  { code: "NZ", name: "新西兰" },
+  { code: "NI", name: "尼加拉瓜" },
+  { code: "NE", name: "尼日尔" },
+  { code: "NG", name: "尼日利亚" },
+  { code: "MK", name: "北马其顿" },
+  { code: "NO", name: "挪威" },
+  { code: "OM", name: "阿曼" },
+  { code: "PK", name: "巴基斯坦" },
+  { code: "PW", name: "帕劳" },
   { code: "PA", name: "巴拿马" },
+  { code: "PG", name: "巴布亚新几内亚" },
+  { code: "PY", name: "巴拉圭" },
+  { code: "PE", name: "秘鲁" },
+  { code: "PH", name: "菲律宾" },
+  { code: "PL", name: "波兰" },
+  { code: "PT", name: "葡萄牙" },
+  { code: "QA", name: "卡塔尔" },
+  { code: "RO", name: "罗马尼亚" },
+  { code: "RU", name: "俄罗斯" },
+  { code: "RW", name: "卢旺达" },
+  { code: "KN", name: "圣基茨和尼维斯" },
+  { code: "LC", name: "圣卢西亚" },
+  { code: "VC", name: "圣文森特和格林纳丁斯" },
+  { code: "WS", name: "萨摩亚" },
+  { code: "SM", name: "圣马力诺" },
+  { code: "ST", name: "圣多美和普林西比" },
+  { code: "SA", name: "沙特阿拉伯" },
+  { code: "SN", name: "塞内加尔" },
+  { code: "RS", name: "塞尔维亚" },
+  { code: "SC", name: "塞舌尔" },
+  { code: "SL", name: "塞拉利昂" },
+  { code: "SG", name: "新加坡" },
+  { code: "SK", name: "斯洛伐克" },
+  { code: "SI", name: "斯洛文尼亚" },
+  { code: "SB", name: "所罗门群岛" },
+  { code: "SO", name: "索马里" },
   { code: "ZA", name: "南非" },
+  { code: "SS", name: "南苏丹" },
+  { code: "ES", name: "西班牙" },
+  { code: "LK", name: "斯里兰卡" },
+  { code: "SD", name: "苏丹" },
+  { code: "SR", name: "苏里南" },
+  { code: "SE", name: "瑞典" },
+  { code: "CH", name: "瑞士" },
+  { code: "SY", name: "叙利亚" },
+  { code: "TJ", name: "塔吉克斯坦" },
+  { code: "TZ", name: "坦桑尼亚" },
+  { code: "TH", name: "泰国" },
+  { code: "TL", name: "东帝汶" },
+  { code: "TG", name: "多哥" },
+  { code: "TO", name: "汤加" },
+  { code: "TT", name: "特立尼达和多巴哥" },
+  { code: "TN", name: "突尼斯" },
+  { code: "TR", name: "土耳其" },
+  { code: "TM", name: "土库曼斯坦" },
+  { code: "TV", name: "图瓦卢" },
+  { code: "UG", name: "乌干达" },
+  { code: "UA", name: "乌克兰" },
+  { code: "AE", name: "阿联酋" },
+  { code: "GB", name: "英国" },
+  { code: "US", name: "美国" },
+  { code: "UY", name: "乌拉圭" },
+  { code: "UZ", name: "乌兹别克斯坦" },
+  { code: "VU", name: "瓦努阿图" },
+  { code: "VA", name: "梵蒂冈" },
+  { code: "VE", name: "委内瑞拉" },
+  { code: "VN", name: "越南" },
+  { code: "YE", name: "也门" },
+  { code: "ZM", name: "赞比亚" },
+  { code: "ZW", name: "津巴布韦" },
+  { code: "PS", name: "巴勒斯坦" },
 ] as const;
 
 const COUNTRY_NAME_BY_CODE = Object.fromEntries(COUNTRY_OPTIONS.map((item) => [item.code, item.name]));
@@ -1311,8 +1469,10 @@ function getAdminHTML(currentUsername: string): string {
               <h2>允许国家（域名全局）</h2>
               <p class="desc">对当前入口域名全局生效，影响该域名下所有子链接。</p>
               <div class="field">
-                <label for="country-code">国家/地区</label>
-                <select id="country-code"></select>
+                <label for="country-search">国家/地区（可搜索）</label>
+                <input id="country-search" placeholder="输入国家名或代码，如 巴拿马 / PA">
+                <select id="country-code" size="8"></select>
+                <div id="country-picker-summary" class="small"></div>
               </div>
               <button class="btn-warning" id="add-country-btn">添加允许国家</button>
               <div id="country-message" class="message"></div>
@@ -1467,13 +1627,52 @@ function getAdminHTML(currentUsername: string): string {
       return match ? match.name : normalizedCode || '未知';
     }
 
-    function renderCountryPicker() {
+    function normalizeCountrySearchKeyword(value) {
+      return String(value || '').trim().toUpperCase();
+    }
+
+    function getAvailableCountryOptions() {
+      const usedCountryCodes = new Set(
+        (state.countries || []).map((item) => String(item.country_code || '').trim().toUpperCase())
+      );
+      return COUNTRY_OPTIONS.filter((item) => !usedCountryCodes.has(item.code));
+    }
+
+    function renderCountryPicker(keyword) {
+      const searchInput = document.getElementById('country-search');
       const select = document.getElementById('country-code');
+      const summary = document.getElementById('country-picker-summary');
+      const resolvedKeyword =
+        typeof keyword === 'string' ? keyword : (searchInput ? searchInput.value : '');
+      const normalizedKeyword = normalizeCountrySearchKeyword(resolvedKeyword);
+      const previousValue = select.value;
+
+      const availableOptions = getAvailableCountryOptions();
+      const filteredOptions = !normalizedKeyword
+        ? availableOptions
+        : availableOptions.filter((item) => {
+            const code = item.code.toUpperCase();
+            const name = item.name.toUpperCase();
+            return code.includes(normalizedKeyword) || name.includes(normalizedKeyword);
+          });
+
       select.innerHTML = [
-        '<option value="">选择国家/地区</option>',
-        ...COUNTRY_OPTIONS.map((item) => '<option value="' + item.code + '">' + item.name + '</option>')
+        ...filteredOptions.map(
+          (item) => '<option value="' + item.code + '">[' + item.code + '] ' + item.name + '</option>'
+        )
       ].join('');
-      select.value = 'US';
+
+      if (filteredOptions.length > 0) {
+        const keepPrevious = filteredOptions.some((item) => item.code === previousValue);
+        select.value = keepPrevious ? previousValue : filteredOptions[0].code;
+      } else {
+        select.value = '';
+      }
+
+      if (summary) {
+        summary.textContent =
+          '总计 ' + COUNTRY_OPTIONS.length + '，已添加 ' + state.countries.length + '，可选 ' + availableOptions.length;
+      }
     }
 
     async function ensureCloudflareTokenReady() {
@@ -1733,15 +1932,18 @@ function getAdminHTML(currentUsername: string): string {
       const wrap = document.getElementById('countries-list');
       if (!countries.length) {
         wrap.innerHTML = '<div class="empty">当前域名未设置全局允许国家，默认全部国家都可访问。</div>';
+        renderCountryPicker();
         return;
       }
 
       wrap.innerHTML = countries.map((country) => [
         '<span class="chip">',
-        '  ' + escapeHtml(getCountryDisplayName(country.country_code)),
+        '  ' + escapeHtml(getCountryDisplayName(country.country_code) + ' [' + String(country.country_code || '').toUpperCase() + ']'),
         '  <button data-delete-country="' + escapeHtml(country.country_code) + '">×</button>',
         '</span>'
       ].join('')).join('');
+
+      renderCountryPicker();
 
       wrap.querySelectorAll('[data-delete-country]').forEach((button) => {
         button.addEventListener('click', async () => {
@@ -2036,7 +2238,7 @@ function getAdminHTML(currentUsername: string): string {
       }
     });
 
-    document.getElementById('add-country-btn').addEventListener('click', async () => {
+    async function addSelectedCountry() {
       if (!requireDomain()) {
         return;
       }
@@ -2044,7 +2246,7 @@ function getAdminHTML(currentUsername: string): string {
       const input = document.getElementById('country-code');
       const countryCode = input.value.trim();
       if (!countryCode) {
-        setMessage('country-message', '请选择国家/地区', 'error');
+        setMessage('country-message', '没有可添加的国家，请修改搜索条件', 'error');
         return;
       }
 
@@ -2053,12 +2255,40 @@ function getAdminHTML(currentUsername: string): string {
           method: 'POST',
           body: JSON.stringify({ domain_id: state.selectedDomainId, country_code: countryCode })
         });
-        input.value = '';
         setMessage('country-message', '域名全局允许国家已添加', 'success');
         await loadOverview();
       } catch (error) {
         setMessage('country-message', error.message, 'error');
       }
+    }
+
+    document.getElementById('add-country-btn').addEventListener('click', async () => {
+      await addSelectedCountry();
+    });
+
+    document.getElementById('country-search').addEventListener('input', (event) => {
+      const target = event.target;
+      renderCountryPicker(target && target.value ? String(target.value) : '');
+    });
+
+    document.getElementById('country-search').addEventListener('keydown', async (event) => {
+      if (event.key !== 'Enter') {
+        return;
+      }
+      event.preventDefault();
+      await addSelectedCountry();
+    });
+
+    document.getElementById('country-code').addEventListener('keydown', async (event) => {
+      if (event.key !== 'Enter') {
+        return;
+      }
+      event.preventDefault();
+      await addSelectedCountry();
+    });
+
+    document.getElementById('country-code').addEventListener('dblclick', async () => {
+      await addSelectedCountry();
     });
 
     document.getElementById('delete-domain-btn').addEventListener('click', async () => {
